@@ -1,0 +1,21 @@
+# Проверка довлатовской конфигурации без настоящих текстов: корпус — data/dovlatov_sample
+# (три коротких оригинальных текста-образца от первого лица, не Довлатов). Для запуска на заглушке:
+#   python apophenia.py once --mock --scenario drift --config config.dovlatov.sample.yaml
+extends: config.dovlatov.yaml
+
+corpus:
+  dir: data/dovlatov_sample
+  exclude_file: ""
+
+sheet:
+  title: "МЕТАСОЗНАНИЕ · ДОВЛАТОВ · ОБРАЗЕЦ"
+
+display:
+  debug: true
+
+paths:
+  archive: archive_dovlatov_test
+  rejected: archive_dovlatov_test/rejected
+  queue: queue_dovlatov_test
+  state: state_dovlatov_test
+  logs: logs_dovlatov_test

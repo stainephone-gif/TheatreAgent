@@ -11,12 +11,9 @@ import random
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple
 
-from . import CLASSES
+from . import CLASSES, LEVELS
 from .corpus import count_words
 from .verify_quotes import select_independent, verify_span
-
-LEVELS = {"explicit", "scientific_metaphor", "meta_metaphor"}
-
 
 def validate_theory_response(resp: Optional[Dict[str, Any]], text: str, vcfg: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Все фрагменты ответа с полем kept и drop_reason (unverified — «призрачные цитаты»)."""

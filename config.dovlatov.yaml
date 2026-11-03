@@ -1,0 +1,57 @@
+# Довлатов — театральная конфигурация: та же механика (призрачные цитаты → экспликация к себе → чтение →
+# переписывание → исход), но корпус — проза Довлатова, а кодбук — позиции рассказчика (prompts/codebook_dovlatov.md).
+# Запуск: python apophenia.py once --config config.dovlatov.yaml   (с --mock — без API)
+# Наследует config.yaml (модель, пороги, принтер, экран), переопределяет только своё.
+extends: config.yaml
+
+# Классы кодбука: порядок — порядок строк на листе и на экране. UND (без позиции) добавляется автоматически.
+classes:
+  - {code: WIT,   name: свидетель}
+  - {code: GUILT, name: виноватый}
+  - {code: HURT,  name: потерпевший}
+  - {code: MASK,  name: ремесленник}
+  - {code: ALIEN, name: посторонний}
+  - {code: SPLIT, name: двойник}
+und_name: без позиции
+levels: [direct, ironic, lowered]
+
+corpus:
+  format: txt                        # папка txt-файлов вместо xlsx
+  dir: data/dovlatov                 # один рассказ или книга на файл, UTF-8; файлы в git не попадают (права)
+  author: "Сергей Довлатов"
+  chunk_words: 300                   # фрагмент ≈ 300 слов, режется по абзацам
+  chunk_max_words: 600
+  min_words: 120
+  exclude_file: data/dovlatov_excluded.json   # результат tools/screen_corpus.py --config config.dovlatov.yaml
+
+prompts:
+  codebook: codebook_dovlatov.md
+  theory: theory_dovlatov_v1.md
+  ghosts: ghosts_dovlatov_v1.md
+  explicate: explicate_dovlatov_v1.md
+  rewrite: rewrite_dovlatov_v1.md
+  und_short: "рассказчик себя не определяет."
+  und_definition: "UND — без позиции: в тексте нет ни одного места, где рассказчик говорил бы о себе и этим занимал позицию."
+
+cycle:
+  stabilized_confidence: 0.7         # позиции соседние (виноватый / потерпевший), порог ниже, чем у теорий сознания
+
+sheet:
+  title: "МЕТАСОЗНАНИЕ · ДОВЛАТОВ"
+  author: "Метасознание, машина на сцене"
+  ghosts_caption: "ПРИЗРАЧНЫЕ ЦИТАТЫ — прочитаны моделью в прозе Довлатова, в тексте не найдены"
+  trajectory_caption: "ТРАЕКТОРИЯ ДРЕЙФА — из какой позиции читатель прочитывал каждую версию текста"
+  text_caption: "ЭКСПЛИКАЦИЯ К СЕБЕ — последняя версия"
+  footer: ""
+
+display:
+  phases:
+    ghosts: "читает Довлатова"
+    writing: "пишет экспликацию к себе"
+
+paths:                               # свой архив и нумерация, выставочный архив не затрагивается
+  archive: archive_dovlatov
+  rejected: archive_dovlatov/rejected
+  queue: queue_dovlatov
+  state: state_dovlatov
+  logs: logs_dovlatov

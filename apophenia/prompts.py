@@ -106,6 +106,6 @@ def class_short_definitions(cfg: Dict[str, Any]) -> str:
         m = re.search(rf"### {cls} — [^\n]*\n([^\n]+)", theory)
         definition = m.group(1).strip() if m else ""
         if cls == "UND":
-            definition = "ни одной теории в тексте не найдено."
+            definition = cfg["prompts"].get("und_short") or "ни одной теории в тексте не найдено."
         lines.append(f"- {cls} ({CLASS_NAMES_RU[cls]}): {definition}")
     return "\n".join(lines)

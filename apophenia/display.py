@@ -10,6 +10,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from . import ALL_CLASSES, CLASS_NAMES_RU
 from .config import ROOT, path_dir
 
 log = logging.getLogger("apophenia.display")
@@ -99,6 +100,9 @@ class DisplayServer:
                     except json.JSONDecodeError:
                         st = {}
                     st["quote_seconds"] = outer.quote_seconds
+                    st["classes"] = list(ALL_CLASSES)
+                    st["class_names"] = dict(CLASS_NAMES_RU)
+                    st["phase_names"] = outer.cfg.get("display", {}).get("phases") or {}
                     self._json(st)
                 elif p == "/archive.json":
                     self._json(archive_quotes(outer.cfg))

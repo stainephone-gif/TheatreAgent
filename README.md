@@ -58,6 +58,7 @@ start.bat, stop.bat     ручной запуск и остановка служ
 start_open.bat          режим открытия: то же самое, но лист каждые 10 минут (config.open.yaml)
 test.bat, config.test.yaml   тестовый режим: циклы подряд, свой архив и принтер, протоколы, отладочный экран
 config.yaml             все настройки (модель, пороги, расписание, принтер, экран)
+config.dovlatov.yaml    та же механика на прозе Довлатова с кодбуком позиций рассказчика (см. раздел ниже); .sample — проверка на образце
 config.local.yaml       локальные переопределения этого компьютера (не в git), образец config.local.example.yaml
 .env                    секреты: GIGACHAT_CREDENTIALS, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (из .env.example)
 apophenia/
@@ -73,6 +74,7 @@ apophenia/
   display.py            HTTP-сервер экрана: /, /state.json, /archive.json
   schedule.py, state.py, telegram.py
 prompts/
+  codebook_dovlatov.md, *_dovlatov_v1.md   кодбук позиций рассказчика и промпты довлатовской конфигурации
   codebook.md, theory_v3.md     копии из AI-art: кодбук и промпт классификатора (чтение самоэкспликации);
                                 отличие от исследования одно: в образце формата вместо "COMP" нейтральный список классов
   ghosts_v1.md                  призрачные цитаты: тот же кодбук и формат, но жадное чтение, не менее 4 фрагментов
@@ -81,6 +83,7 @@ prompts/
   moderate_v1.md                проверка текста для выставки 6+
 display/index.html      страница киоска (чёрный экран, цитаты / текст + траектория)
 data/corpus.xlsx        корпус (копия combined_ai_preprocessed.xlsx), data/stoplist.txt — стоп-список
+data/dovlatov/          txt-файлы прозы Довлатова (не в git), data/dovlatov_sample/ — три оригинальных текста-образца
 tools/screen_corpus.py  однократная проверка корпуса модерацией → data/corpus_excluded.json
 install/                Windows 10: install.ps1, register_task.ps1, run.bat, kiosk.bat, README-windows.md
 tests/                  pytest, всё на заглушке, без API и принтера
@@ -114,6 +117,48 @@ python apophenia.py once --mock --scenario drift      # сценарии: stabil
 python apophenia.py run --mock                        # служба целиком; экран: http://127.0.0.1:8765/
 pytest
 ```
+
+## Другой корпус и другой кодбук: Довлатов (театр)
+
+Та же механика на другом материале: корпус — проза Сергея Довлатова, кодбук — не теории сознания, а
+**позиции рассказчика** (`prompts/codebook_dovlatov.md`): кто говорит «я».
+
+| Код | Позиция | Что засчитывается |
+|---|---|---|
+| WIT | свидетель | «я» только фиксирует: видел, запомнил, записал; участия нет |
+| GUILT | виноватый | признание собственной слабости, вины как факта, без оправдания |
+| HURT | потерпевший | обстоятельства, начальство, судьба действуют против «я» |
+| MASK | ремесленник | «я» определено через работу: газетчик, экскурсовод, охранник |
+| ALIEN | посторонний | не свой среди своих, лишний в любой компании |
+| SPLIT | двойник | «я» видит себя со стороны как другого |
+| UND | без позиции | рассказчик себя не определяет |
+
+Уровни вместо `explicit / scientific_metaphor / meta_metaphor`: `direct` (прямо), `ironic` (с усмешкой над собой),
+`lowered` (важное подано буднично). Машина в этой конфигурации стоит на сцене театра и пишет экспликацию к себе
+для программки из призрачных цитат — фраз, которые модель прочитала у Довлатова, но которых там нет.
+Читатель определяет, из какой позиции она себя написала; машина переписывает себя, пока не закрепится
+в одной позиции (STABILIZED), не замкнётся в колебании (например, виноватый ↔ потерпевший) или не оборвётся.
+
+Всё это задаётся конфигом, код общий (`config.dovlatov.yaml` наследует `config.yaml`):
+
+- `classes: [{code, name}]`, `und_name`, `levels` — классы кодбука; порядок — порядок строк на листе и на экране;
+- `corpus.format: txt`, `corpus.dir` — папка txt-файлов (один рассказ на файл), режется на фрагменты ≈ `chunk_words` слов по абзацам;
+- `prompts.codebook / theory / ghosts / explicate / rewrite` — свои файлы в `prompts/`; формат кодбука тот же (`### КОД — название`, разделы `section:`);
+- `sheet.title`, подписи разделов листа, `display.phases` — надписи; `paths` — свой архив и нумерация;
+- `cycle.stabilized_confidence: 0.7` — позиции соседние, порог ниже, чем у теорий.
+
+Тексты Довлатова под авторским правом и в git не попадают: положить txt-файлы в `data/dovlatov/` (см. README там).
+Без текстов и без API конфигурация проверяется на образце из трёх оригинальных текстов (`data/dovlatov_sample/`):
+
+```
+python apophenia.py once --mock --scenario drift --config config.dovlatov.sample.yaml
+python apophenia.py run --mock --config config.dovlatov.sample.yaml        # служба и экран с позициями вместо теорий
+python apophenia.py once --config config.dovlatov.yaml                      # настоящий цикл на GigaChat
+python apophenia.py stats archive_dovlatov --config config.dovlatov.yaml
+```
+
+Модерация в этой конфигурации та же (стоп-список и фильтр 6+); для театра её можно ослабить в `config.dovlatov.yaml`
+(`moderation.enabled`, свой `stoplist`), иначе лагерная и питейная лексика призраков будет отбрасывать циклы.
 
 ## Локальные настройки и обновление через git
 

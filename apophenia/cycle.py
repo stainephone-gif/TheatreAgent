@@ -150,7 +150,8 @@ class Engine:
                 primary_name=CLASS_NAMES_RU.get(it["primary"], ""), confidence=f"{it['confidence']:.2f}",
                 reading=ev_lines,
                 definition=class_definition(self.cfg, it["primary"]) if it["primary"] != "UND"
-                else "UND — свидетельств ни одной теории не найдено: в тексте нет переноса между областью ума и областью машины.",
+                else self.cfg["prompts"].get("und_definition")
+                or "UND — свидетельств ни одной теории не найдено: в тексте нет переноса между областью ума и областью машины.",
             )
             gen = self._moderated("rewrite", rw_system, user, float(self.temps.get("explicate", 0.8)), f"rewrite:{n}")
             it["rewrite_attempts"] = gen["attempts"]

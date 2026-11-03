@@ -18,3 +18,14 @@ config.local.yaml
 venv/
 SumatraPDF-settings.txt
 install/SumatraPDF-settings.txt
+# Довлатов: тексты под авторским правом, в git не попадают; рабочие каталоги конфигурации
+data/dovlatov/*.txt
+data/dovlatov_excluded.json
+archive_dovlatov/
+queue_dovlatov/
+state_dovlatov/
+logs_dovlatov/
+archive_dovlatov_test/
+queue_dovlatov_test/
+state_dovlatov_test/
+logs_dovlatov_test/
