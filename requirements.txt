@@ -1,0 +1,11 @@
+pandas>=2.0
+openpyxl>=3.1
+pyyaml>=6.0
+requests>=2.28
+python-dotenv>=1.0
+reportlab>=4.0
+pytest>=7.0
+# печать через GDI (printer.backend: gdi), только Windows
+pypdfium2>=4.30; sys_platform == "win32"
+pillow>=10.0; sys_platform == "win32"
+pywin32>=306; sys_platform == "win32"
