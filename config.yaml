@@ -1,0 +1,123 @@
+# Метасознание — конфигурация инсталляции. Пути относительно корня репозитория.
+# Секреты (ключ GigaChat, токен Telegram) лежат в .env, не здесь.
+
+llm:
+  provider: gigachat                 # gigachat | mock (детерминированная заглушка без API и без принтера)
+  model: GigaChat-2-Max              # проверить доступные имена: python apophenia.py models
+  models:                            # модель по ролям; не указанные роли берут model выше
+    ghosts: GigaChat-2               # чтение корпуса: модель слабее, она чаще «дочитывает» лишнее
+  auth_url: https://ngw.devices.sberbank.ru:9443/api/v2/oauth
+  base_url: https://gigachat.devices.sberbank.ru/api/v1
+  scope: GIGACHAT_API_PERS           # GIGACHAT_API_PERS | GIGACHAT_API_B2B | GIGACHAT_API_CORP
+  credentials_env: GIGACHAT_CREDENTIALS
+  ca_bundle: install/russian_trusted_root_ca.cer   # сертификат НУЦ Минцифры; пусто — системное хранилище
+  verify_ssl: true
+  timeout: 120
+  max_retries: 4
+  request_delay: 1.0
+  max_tokens: 3000
+  temperatures:
+    ghosts: 1.0                      # генерация призрачных цитат
+    explicate: 0.8                   # самоэкспликация и переписывание
+    classify: 0.0                    # классификация (детерминированная)
+    moderate: 0.0
+
+corpus:
+  path: data/corpus.xlsx
+  sheet: data
+  text_column: descr_clean
+  fallback_text_column: descr
+  title_column: title
+  author_column: descr_author
+  source_column: __source
+  exclude_file: data/corpus_excluded.json   # результат tools/screen_corpus.py; отсутствует — ничего не исключается
+  min_words: 60
+
+prompts:
+  dir: prompts
+  codebook: codebook.md
+  theory: theory_v3.md               # классификатор: тот же строгий промпт, что в исследовании AI-art
+  ghosts: ghosts_v1.md               # призрачные цитаты: тот же кодбук и формат, но жадное чтение (не менее 4 фрагментов)
+  explicate: explicate_v1.md
+  rewrite: rewrite_v1.md
+  moderate: moderate_v1.md
+
+ghosts:
+  min_quotes: 3                      # минимум призрачных цитат на цикл
+  max_quotes: 8
+  max_texts_per_cycle: 8             # сколько кураторских текстов читать, пока не наберётся min_quotes
+  verification:                      # что считать «фразой, которой в тексте нет» (переопределяет verification ниже)
+    require_exact: true              # призрак — любая цитата, которой нет в тексте дословно (с точностью до регистра и пунктуации)
+    # token_overlap_threshold: 0.9   # альтернатива: мягче — призрак, если совпало меньше 90 % слов
+
+verification:                        # как в AI-art config.yaml
+  token_overlap_threshold: 0.7
+  require_exact: false
+  min_span_words: 2
+  require_exclusion_checked: true
+
+cycle:
+  max_iterations: 25
+  stabilized_streak: 3
+  stabilized_confidence: 0.81        # доля фрагментов ведущего класса; UND не стабилизирует
+  oscillation_window: 6
+  oscillation_periods: [2, 3]
+  degeneration_cosine: 0.97          # косинус на символьных триграммах соседних версий
+  explication_words: [150, 260]      # ориентир длины самоэкспликации
+
+moderation:
+  enabled: true
+  stoplist: data/stoplist.txt
+  llm_check: true
+  max_regenerations: 2               # попыток переписать помеченный текст до отбраковки цикла
+  telegram_review: false             # true — перед печатью ждать окно вето в Telegram
+  review_minutes: 20
+
+schedule:
+  interval_minutes: 60               # один цикл (один лист) в час
+  always: true                       # часов работы нет: циклы идут всё время, пока включён компьютер (розетка с таймером)
+  open: "11:00"                      # действуют только при always: false
+  close: "20:00"
+  days: [1, 2, 3, 4, 5, 6, 7]        # 1 = понедельник
+  start_immediately: true            # первый цикл сразу после запуска
+
+printer:
+  enabled: true
+  name: "Pantum P2500NW-series"           # точное имя принтера в Windows (Get-Printer); "default" — принтер по умолчанию
+  backend: auto                      # auto — в Windows средствами системы (gdi), если стоят pypdfium2 и pywin32, иначе command; command — SumatraPDF/lp; gdi — принудительно
+  gdi_dpi: 300
+  # Команда печати. {pdf} и {printer} подставляются. Windows: SumatraPDF (portable exe положить в install/).
+  # Драйвер Pantum ставится с pantum.ru; в Windows 10 встроенного нет.
+  command: ["install/SumatraPDF.exe", "-print-to", "{printer}", "-silent", "-exit-when-done", "{pdf}"]
+  # Linux (для отладки):  command: ["lp", "-d", "{printer}", "{pdf}"]
+  retry_seconds: 60
+  copies: 1
+
+sheet:
+  font_regular: fonts/DejaVuSans.ttf
+  font_bold: fonts/DejaVuSans-Bold.ttf
+  font_mono: fonts/DejaVuSansMono.ttf
+  title: "МЕТАСОЗНАНИЕ"
+  margin_mm: 16
+  scale_max: 1.7                     # лист масштабируется целиком, чтобы заполнить А4: верхний предел (текст 17 pt)
+  scale_min: 0.6                     # нижний предел для очень длинных текстов (6 pt)
+  footer: "Листы архива можно листать и перекладывать. Уносить нельзя."
+
+display:
+  enabled: true
+  host: 127.0.0.1
+  port: 8765
+  quote_seconds: 12                  # смена цитаты на экране в паузе
+
+paths:
+  archive: archive                   # cycle_NNNNN.json / .pdf
+  rejected: archive/rejected         # отбракованные модерацией циклы
+  queue: queue                       # очередь печати
+  state: state                       # state.json, display.json
+  logs: logs
+
+telegram:
+  enabled: false
+  token_env: TELEGRAM_BOT_TOKEN
+  chat_id_env: TELEGRAM_CHAT_ID
+  notify_on: [cycle_done, rejected, api_error, printer_error, no_internet]

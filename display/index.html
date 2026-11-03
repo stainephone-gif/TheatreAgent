@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Метасознание</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  @font-face { font-family: "Sans"; src: url("/fonts/DejaVuSans.ttf") format("truetype"); font-weight: 400; }
+  @font-face { font-family: "Sans"; src: url("/fonts/DejaVuSans-Bold.ttf") format("truetype"); font-weight: 700; }
+  @font-face { font-family: "Mono"; src: url("/fonts/DejaVuSansMono.ttf") format("truetype"); }
+  :root { --bg: #000; --fg: #e8e8e8; --dim: #6a6a6a; --line: #2a2a2a; --accent: #fff; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font-family: "Sans", system-ui, sans-serif; overflow: hidden; cursor: none; }
+  #stage { position: relative; width: 100vw; height: 100vh; }
+  .view { position: absolute; inset: 0; opacity: 0; transition: opacity 1.6s ease; pointer-events: none; }
+  .view.on { opacity: 1; }
+  /* --- пауза: цитаты --- */
+  #quote { display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 8vh 10vw; box-sizing: border-box; }
+  #qtext { font-size: 3.6vw; line-height: 1.35; text-align: center; max-width: 80vw; opacity: 0; transition: opacity 2.2s ease; font-weight: 400; }
+  #qtext.show { opacity: 1; }
+  #qmeta { margin-top: 4vh; font-family: "Mono", monospace; font-size: 1.05vw; color: var(--dim); letter-spacing: .04em; text-align: center; opacity: 0; transition: opacity 2.2s ease .6s; }
+  #qmeta.show { opacity: 1; }
+  #qcaption { position: absolute; bottom: 4vh; left: 0; right: 0; text-align: center; font-family: "Mono", monospace; font-size: 1vw; color: var(--dim); letter-spacing: .08em; }
+  /* --- цикл: текст и траектория --- */
+  #cycle { display: grid; grid-template-columns: 58fr 42fr; grid-template-rows: auto 1fr; gap: 0 4vw; padding: 5vh 5vw; box-sizing: border-box; }
+  #head { grid-column: 1 / 3; font-family: "Mono", monospace; font-size: 1.15vw; color: var(--dim); letter-spacing: .06em; padding-bottom: 2.5vh; border-bottom: 1px solid var(--line); margin-bottom: 3vh; display: flex; justify-content: space-between; }
+  #head b { color: var(--fg); font-weight: 400; }
+  #text { font-size: 1.55vw; line-height: 1.5; overflow: hidden; white-space: pre-wrap; align-self: start; }
+  body.test #cycle { padding-bottom: 30vh; }
+  body.test #qcaption { bottom: 31vh; }
+  body.test #quote { padding-bottom: 30vh; }
+  #text .cursor { display: inline-block; width: .55em; height: 1em; background: var(--fg); vertical-align: -0.15em; margin-left: .1em; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  #traj { width: 100%; height: 100%; }
+  #traj text { font-family: "Mono", monospace; fill: var(--dim); }
+  #traj .lbl { fill: var(--fg); }
+  #traj .row { stroke: var(--line); stroke-width: 1; }
+  #traj .path { fill: none; stroke: var(--fg); stroke-width: 1.5; }
+  #traj .dot { fill: var(--fg); }
+  #traj .dot.cur { fill: var(--accent); }
+  #traj .ring { fill: none; stroke: var(--fg); stroke-width: 1; opacity: .5; }
+  #traj .name { fill: var(--dim); }
+  /* --- тестовый режим: панель прочтения --- */
+  #debug { position: absolute; left: 5vw; right: 5vw; bottom: 3vh; max-height: 26vh; overflow: hidden; border-top: 1px solid var(--line); padding-top: 1.2vh; font-family: "Mono", monospace; font-size: 0.95vw; line-height: 1.5; color: var(--dim); display: none; }
+  #debug.on { display: block; }
+  #debug b { color: var(--fg); font-weight: 400; }
+  #debug .ev { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #badge { position: absolute; top: 2vh; right: 5vw; font-family: "Mono", monospace; font-size: 0.95vw; letter-spacing: .2em; color: var(--dim); border: 1px solid var(--line); padding: .3em .8em; display: none; }
+  #badge.on { display: block; }
+  /* --- тестовый режим: протокол на экране --- */
+  #protocol { padding: 4vh 6vw 0; box-sizing: border-box; overflow: hidden; }
+  #pscroll { height: 100%; overflow: hidden; }
+  #protocol h1 { font-size: 1.6vw; font-weight: 700; margin: 0 0 .4vh; }
+  #protocol .meta { font-family: "Mono", monospace; font-size: 0.95vw; color: var(--dim); margin-bottom: 2.5vh; }
+  #protocol h2 { font-size: 1.05vw; font-weight: 700; letter-spacing: .06em; margin: 2.5vh 0 .8vh; color: var(--fg); }
+  #protocol .q { font-size: 1.25vw; line-height: 1.45; margin: 0 0 .3vh; }
+  #protocol .src, #protocol .ev { font-family: "Mono", monospace; font-size: 0.9vw; line-height: 1.6; color: var(--dim); }
+  #protocol .it { border-top: 1px solid var(--line); padding-top: 1.5vh; margin-top: 2.5vh; }
+  #protocol .it h2 { margin-top: 0; }
+  #protocol .txt { font-size: 1.2vw; line-height: 1.5; margin: .8vh 0 0; white-space: pre-wrap; }
+  #protocol .end { height: 40vh; }
+  /* --- служебные --- */
+  #status { display: flex; align-items: center; justify-content: center; font-family: "Mono", monospace; font-size: 1.3vw; color: var(--dim); letter-spacing: .1em; text-align: center; padding: 0 10vw; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="quote" class="view">
+    <div id="qtext"></div>
+    <div id="qmeta"></div>
+    <div id="qcaption">прочитано, но не найдено</div>
+  </div>
+  <div id="cycle" class="view">
+    <div id="head"><span id="h-left"></span><span id="h-right"></span></div>
+    <div id="text"></div>
+    <svg id="traj" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+  <div id="status" class="view"></div>
+  <div id="protocol" class="view"><div id="pscroll"></div></div>
+  <div id="debug"></div>
+  <div id="badge">ТЕСТ</div>
+</div>
+<script>
+const CLASSES = ["COMP","IIT","PRED","GWT","ENACT","PAN","EMERG","UND"];
+const NAMES = {COMP:"вычислительный функционализм", IIT:"интегрированная информация", PRED:"предиктивная обработка",
+  GWT:"глобальное рабочее пространство", ENACT:"энактивизм", PAN:"панпсихизм", EMERG:"эмерджентизм", UND:"не определено"};
+const PHASES = {ghosts:"читает кураторские тексты", writing:"пишет экспликацию к себе", reading:"перечитывает себя",
+  read:"прочитано", rewriting:"переписывает себя", printing:"печатает лист", idle:"", offhours:"", nointernet:"нет соединения", error:""};
+
+let state = {}, archive = {cycles: []};
+let quotePool = [], quoteIdx = 0, quoteTimer = null, quoteSeconds = 12;
+let typed = {key: null, shown: 0};
+
+function pad(n){ return String(n).padStart(5,"0"); }
+function show(id){ for (const v of document.querySelectorAll(".view")) v.classList.toggle("on", v.id === id); }
+
+async function fetchJSON(url){ const r = await fetch(url, {cache:"no-store"}); return r.ok ? r.json() : {}; }
+
+function rebuildPool(){
+  const pool = [];
+  const cur = state.quotes || [];
+  for (const q of cur) pool.push({...q, cycle: state.cycle});
+  for (const c of archive.cycles || []) for (const q of c.quotes || []) pool.push({...q, cycle: c.cycle});
+  // текущий цикл первым, дальше архив
+  quotePool = pool.length ? pool : [{span: "…", title: "", cycle: null}];
+  quoteIdx = 0;
+}
+
+function nextQuote(){
+  const qt = document.getElementById("qtext"), qm = document.getElementById("qmeta");
+  qt.classList.remove("show"); qm.classList.remove("show");
+  setTimeout(() => {
+    if (!quotePool.length) return;
+    const q = quotePool[quoteIdx % quotePool.length]; quoteIdx++;
+    qt.textContent = "«" + q.span + "»";
+    let meta = q.title ? "прочитано в: «" + q.title + "»" : "";
+    if (q.cycle) meta += (meta ? "  ·  " : "") + "цикл " + pad(q.cycle);
+    if (q.class) meta += "  ·  " + q.class;
+    qm.textContent = meta;
+    qt.classList.add("show"); qm.classList.add("show");
+  }, 1800);
+}
+
+function startQuotes(){
+  if (quoteTimer) return;
+  nextQuote();
+  quoteTimer = setInterval(nextQuote, quoteSeconds * 1000);
+}
+function stopQuotes(){ if (quoteTimer) { clearInterval(quoteTimer); quoteTimer = null; } }
+
+function drawTrajectory(iters, phase){
+  const svg = document.getElementById("traj");
+  const W = 400, H = 300, left = 178, top = 16, rowH = (H - 40) / CLASSES.length;
+  const n = Math.max(iters.length, 6);
+  const step = Math.min(28, (W - left - 10) / n);
+  let s = "";
+  CLASSES.forEach((c, i) => {
+    const y = top + i * rowH + rowH / 2;
+    s += `<text class="lbl" x="0" y="${y+3}" font-size="9">${c}</text>`;
+    s += `<text class="name" x="42" y="${y+3}" font-size="6.5">${NAMES[c]}</text>`;
+    s += `<line class="row" x1="${left}" y1="${y}" x2="${left + step * n}" y2="${y}"/>`;
+  });
+  const pts = iters.map((it, j) => {
+    const i = Math.max(0, CLASSES.indexOf(it.primary));
+    return [left + step * j + step / 2, top + i * rowH + rowH / 2, it.confidence || 0];
+  });
+  if (pts.length > 1) s += `<polyline class="path" points="${pts.map(p => p[0] + "," + p[1]).join(" ")}"/>`;
+  pts.forEach((p, j) => {
+    const r = 2 + 3.5 * p[2];
+    const cur = j === pts.length - 1 && (phase === "read" || phase === "rewriting" || phase === "reading");
+    s += `<circle class="dot${cur ? " cur" : ""}" cx="${p[0]}" cy="${p[1]}" r="${r}"/>`;
+    if (cur) s += `<circle class="ring" cx="${p[0]}" cy="${p[1]}" r="${r + 4}"><animate attributeName="r" values="${r+3};${r+9};${r+3}" dur="2.4s" repeatCount="indefinite"/><animate attributeName="opacity" values=".6;0;.6" dur="2.4s" repeatCount="indefinite"/></circle>`;
+    s += `<text x="${p[0]}" y="${H - 8}" font-size="7" text-anchor="middle">${j + 1}</text>`;
+  });
+  if (phase === "reading" && iters.length >= 0) {
+    // будущая точка: пустой кружок на месте следующей итерации
+    const x = left + step * iters.length + step / 2;
+    s += `<circle class="ring" cx="${x}" cy="${top + (CLASSES.length * rowH) / 2}" r="3"><animate attributeName="opacity" values=".2;.8;.2" dur="1.6s" repeatCount="indefinite"/></circle>`;
+  }
+  svg.innerHTML = s;
+}
+
+function renderCycle(){
+  const iters = state.iterations || [];
+  const last = iters[iters.length - 1];
+  const hl = document.getElementById("h-left"), hr = document.getElementById("h-right");
+  hl.innerHTML = `цикл <b>${pad(state.cycle || 0)}</b>  ·  итерация <b>${state.iteration || iters.length || 1}</b>  ·  ${PHASES[state.phase] || ""}`;
+  hr.innerHTML = last ? `прочитано как <b>${last.primary}</b> · ${NAMES[last.primary] || ""} · <b>${(last.confidence || 0).toFixed(2)}</b>` : "";
+  const text = state.text || "";
+  const key = (state.cycle || 0) + ":" + (state.iteration || 0) + ":" + text.length;
+  const el = document.getElementById("text");
+  // кегль под длину текста: до ~600 знаков крупно, длинные тексты мельче
+  el.style.fontSize = (text.length > 1400 ? 1.15 : text.length > 900 ? 1.3 : 1.55) + "vw";
+  if (typed.key !== key) { typed = {key, shown: 0}; }
+  if (typed.shown < text.length) {
+    typed.shown = Math.min(text.length, typed.shown + Math.max(2, Math.ceil(text.length / 400)));
+    el.innerHTML = escapeHtml(text.slice(0, typed.shown)) + '<span class="cursor"></span>';
+    setTimeout(renderCycle, 40);
+  } else {
+    el.innerHTML = escapeHtml(text) + (state.phase === "rewriting" ? '<span class="cursor"></span>' : "");
+  }
+  drawTrajectory(iters, state.phase);
+}
+
+let lastCycle = null, lastCycleNo = null, scrollTimer = null, scrollPause = 0;
+
+async function loadLastCycle(){
+  try {
+    const rec = await fetchJSON("/last.json");
+    if (rec && rec.cycle) { lastCycle = rec; lastCycleNo = rec.cycle; renderProtocol(); }
+  } catch (e) {}
+}
+
+function renderProtocol(){
+  const rec = lastCycle;
+  const el = document.getElementById("pscroll");
+  if (!rec || !rec.cycle) { el.innerHTML = ""; return; }
+  const o = rec.outcome || {};
+  let h = `<h1>ПРОТОКОЛ ЦИКЛА ${pad(rec.cycle)}</h1>`;
+  h += `<div class="meta">${escapeHtml((rec.finished_at || "").replace("T", " "))} · исход ${o.outcome || ""} · ${escapeHtml(o.detail || "")} · итераций ${(rec.iterations || []).length} · ${rec.duration_s || ""} с · ${escapeHtml(rec.model || "")}</div>`;
+  h += `<h2>ПРИЗРАЧНЫЕ ЦИТАТЫ</h2>`;
+  for (const q of (rec.ghosts || {}).quotes || []) {
+    h += `<div class="q">«${escapeHtml(q.span)}»</div>`;
+    h += `<div class="src">${q.class || ""} · «${escapeHtml(q.title || "")}» · совпадение с текстом ${q.token_overlap ?? ""}</div>`;
+  }
+  for (const r of (rec.ghosts || {}).readings || []) {
+    h += `<div class="ev">текст ${r.text_id} «${escapeHtml(r.title || "")}»: фрагментов ${r.n_total}, верифицировано ${r.n_kept}, призрачных ${r.n_unverified}</div>`;
+  }
+  for (const it of rec.iterations || []) {
+    h += `<div class="it"><h2>ИТЕРАЦИЯ ${it.n} — ${it.primary} · ${NAMES[it.primary] || ""} · уверенность ${(it.confidence || 0).toFixed(2)} · фрагментов ${it.n_kept ?? 0} · слов ${it.n_words ?? ""}</h2>`;
+    for (const e of it.evidence || []) {
+      const m = e.mapping || {};
+      h += `<div class="ev">[${e.class}] «${escapeHtml(e.span)}» — ${escapeHtml(m.source || "")} → ${escapeHtml(m.target || "")}</div>`;
+    }
+    if ((it.unverified || []).length) h += `<div class="ev">не найдено в тексте: ${it.unverified.map(u => "«" + escapeHtml(u) + "»").join("; ")}</div>`;
+    h += `<div class="txt">${escapeHtml(it.text || "")}</div></div>`;
+  }
+  h += `<div class="end"></div>`;
+  el.innerHTML = h;
+  el.scrollTop = 0;
+  scrollPause = 120; // ~5 с паузы перед прокруткой
+}
+
+function startScroll(){
+  if (scrollTimer) return;
+  scrollTimer = setInterval(() => {
+    const el = document.getElementById("pscroll");
+    if (scrollPause > 0) { scrollPause--; return; }
+    if (el.scrollTop + el.clientHeight >= el.scrollHeight - 2) { scrollPause = 200; el.scrollTop = 0; return; }
+    el.scrollTop += 1;
+  }, 40);
+}
+function stopScroll(){ if (scrollTimer) { clearInterval(scrollTimer); scrollTimer = null; } }
+
+function renderDebug(){
+  const el = document.getElementById("debug");
+  const on = !!state.test_mode;
+  document.body.classList.toggle("test", on);
+  document.getElementById("badge").classList.toggle("on", on);
+  if (!on) { el.classList.remove("on"); return; }
+  el.classList.add("on");
+  const iters = state.iterations || [];
+  const last = iters[iters.length - 1];
+  let html = "";
+  if (state.phase === "idle" || state.phase === "printing" || state.phase === "offhours") {
+    const o = state.last_outcome;
+    html += `<div>последний цикл <b>${pad(state.cycle || 0)}</b>` + (o ? ` · исход <b>${o.outcome}</b> ${o.detail ? "· " + escapeHtml(o.detail) : ""}` : "") +
+            (state.message ? ` · ${escapeHtml(state.message)}` : "") + `</div>`;
+    html += `<div>траектория: ${iters.map(i => i.primary).join(" → ") || "—"}</div>`;
+  } else if (last) {
+    html += `<div>итерация <b>${last.n}</b> · <b>${last.primary}</b> · уверенность <b>${(last.confidence || 0).toFixed(2)}</b> · фрагментов ${last.n_kept ?? (last.evidence || []).length}</div>`;
+    for (const e of (last.evidence || []).slice(0, 6)) {
+      const m = e.mapping || {};
+      html += `<div class="ev">[${e.class}] «${escapeHtml(e.span)}» — ${escapeHtml(m.source || "")} → ${escapeHtml(m.target || "")}</div>`;
+    }
+  } else {
+    html += `<div>${PHASES[state.phase] || ""}</div>`;
+  }
+  el.innerHTML = html;
+}
+
+function escapeHtml(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+function render(){
+  const ph = state.phase || "idle";
+  renderDebug();
+  if (ph === "reading" || ph === "read" || ph === "rewriting" || ph === "writing") {
+    stopQuotes(); stopScroll(); renderCycle(); show("cycle");
+  } else if (ph === "nointernet" || ph === "error") {
+    stopQuotes();
+    document.getElementById("status").textContent = state.message || PHASES[ph] || "";
+    show("status");
+  } else if (state.test_mode && lastCycle && (ph === "idle" || ph === "offhours" || ph === "printing")) {
+    stopQuotes(); show("protocol"); startScroll();
+    document.getElementById("debug").classList.remove("on");
+  } else {
+    // idle, offhours, ghosts, printing — цитаты
+    stopScroll(); show("quote"); startQuotes();
+  }
+}
+
+async function tick(){
+  try {
+    const st = await fetchJSON("/state.json");
+    const changedCycle = st.cycle !== state.cycle;
+    state = st;
+    quoteSeconds = st.quote_seconds || quoteSeconds;
+    if (changedCycle || !archive.cycles.length) { archive = await fetchJSON("/archive.json"); rebuildPool(); }
+    if (st.test_mode && (st.cycle !== lastCycleNo || (st.phase === "idle" && !lastCycle))) await loadLastCycle();
+    render();
+  } catch (e) { /* сервер перезапускается */ }
+}
+tick(); setInterval(tick, 2000);
+setInterval(async () => { archive = await fetchJSON("/archive.json"); rebuildPool(); }, 10 * 60 * 1000);
+</script>
+</body>
+</html>

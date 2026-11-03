@@ -1,0 +1,28 @@
+# Тестовый режим: наследует config.yaml, переопределяет только то, что нужно для проверки алгоритма.
+# Запуск: test.bat  или  .venv\Scripts\python.exe apophenia.py run --config config.test.yaml
+extends: config.yaml
+
+schedule:
+  interval_minutes: 0                # циклы подряд, пауза между ними pause_seconds
+  pause_seconds: 30
+  open: "00:00"
+  close: "23:59"
+  days: [1, 2, 3, 4, 5, 6, 7]
+  max_cycles: 5                      # после N циклов служба остаётся ждать с цитатами на экране; 0 — без ограничения
+
+printer:
+  name: "HP Laser MFP 131 133 135-138"   # тестовый принтер; точное имя: Get-Printer
+  protocol: false                    # протокол показывается на экране и сохраняется в PDF; true — ещё и печатать
+
+sheet:
+  title: "МЕТАСОЗНАНИЕ · ТЕСТ"
+
+display:
+  debug: true                        # экран: панель с фрагментами во время цикла, протокол последнего цикла в паузе
+
+paths:                               # отдельный архив, чтобы не расходовать номера выставочных циклов
+  archive: archive_test
+  rejected: archive_test/rejected
+  queue: queue_test
+  state: state_test
+  logs: logs_test

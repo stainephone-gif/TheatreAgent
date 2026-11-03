@@ -1,0 +1,6 @@
+# Режим открытия выставки: как основной режим (тот же архив и нумерация, тот же принтер из config.local.yaml),
+# но лист печатается каждые 10 минут. Запуск: start_open.bat. Обычный ритм в час: start.bat.
+extends: config.yaml
+
+schedule:
+  interval_minutes: 10

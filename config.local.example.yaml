@@ -1,0 +1,13 @@
+# Локальные настройки этого компьютера. Скопировать в config.local.yaml (в git не попадает) и править только его.
+# Всё, что здесь не указано, берётся из config.yaml. Тестовый режим (config.test.yaml) тоже видит эти настройки.
+extends: config.yaml
+
+printer:
+  name: "Pantum P2500NW-series"      # точное имя принтера в Windows: Get-Printer
+  # backend: command                 # принудительно SumatraPDF; по умолчанию auto (средствами Windows, если стоят пакеты)
+
+schedule:
+  interval_minutes: 60               # один лист в час, пока включён компьютер
+  # always: false                    # если нужны часы работы вместо таймера-розетки:
+  # open: "11:00"
+  # close: "20:00"
