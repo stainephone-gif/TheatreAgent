@@ -274,24 +274,25 @@ def _sentences(text: str) -> List[str]:
 
 
 class MockLLM(BaseLLM):
-    """Детерминированная заглушка. scenario задаёт траекторию классификатора:
+    """Детерминированная заглушка. scenario задаёт траекторию классификатора; классы берутся по номеру
+    из текущего списка CLASSES (для теорий сознания: 0 = COMP, 1 = IIT, 2 = PRED, 3 = GWT, 4 = ENACT, 5 = PAN, 6 = EMERG):
 
-    stabilize  — COMP, COMP, COMP …                       → STABILIZED
-    drift      — COMP, PRED, ENACT, ENACT, ENACT …         → STABILIZED в ENACT
-    oscillate  — COMP, PAN, COMP, PAN …                    → OSCILLATION (период 2)
-    oscillate3 — COMP, PAN, EMERG, COMP, PAN, EMERG …      → OSCILLATION (период 3)
-    wander     — COMP, IIT, PRED, GWT, ENACT, PAN, EMERG … → UNFINISHED (потолок)
+    stabilize  — класс 0 всё время                         → STABILIZED
+    drift      — 0, 2, 4, 4, 4 …                           → STABILIZED в классе 4
+    oscillate  — 0, 5, 0, 5 …                              → OSCILLATION (период 2)
+    oscillate3 — 0, 5, 6, 0, 5, 6 …                        → OSCILLATION (период 3)
+    wander     — 0, 1, 2, 3, 4, 5, 6 …                     → UNFINISHED (потолок)
     degenerate — переписывание возвращает тот же текст     → UNFINISHED (вырождение)
     und        — свидетельств нет                          → UNFINISHED (потолок)
     """
 
     SEQ = {
-        "stabilize": ["COMP"],
-        "drift": ["COMP", "PRED", "ENACT", "ENACT", "ENACT", "ENACT"],
-        "oscillate": ["COMP", "PAN"],
-        "oscillate3": ["COMP", "PAN", "EMERG"],
-        "wander": ["COMP", "IIT", "PRED", "GWT", "ENACT", "PAN", "EMERG"],
-        "degenerate": ["COMP", "PRED"],
+        "stabilize": [0],
+        "drift": [0, 2, 4, 4, 4, 4],
+        "oscillate": [0, 5],
+        "oscillate3": [0, 5, 6],
+        "wander": [0, 1, 2, 3, 4, 5, 6],
+        "degenerate": [0, 2],
         "und": [],
     }
 
@@ -303,12 +304,13 @@ class MockLLM(BaseLLM):
         self._rewrite_n = 0
 
     def _class_for_call(self) -> Optional[str]:
+        from . import CLASSES  # noqa: PLC0415 — список может быть переопределён конфигом
         seq = self.SEQ[self.scenario]
         if not seq:
             return None
-        cls = seq[min(self._classify_n, len(seq) - 1)] if self.scenario == "drift" else seq[self._classify_n % len(seq)]
+        idx = seq[min(self._classify_n, len(seq) - 1)] if self.scenario == "drift" else seq[self._classify_n % len(seq)]
         self._classify_n += 1
-        return cls
+        return CLASSES[idx % len(CLASSES)]
 
     def complete(self, role: str, system: str, user: str, temperature: float) -> LLMResponse:
         self.calls.append({"role": role, "temperature": temperature})
@@ -321,23 +323,26 @@ class MockLLM(BaseLLM):
                 "алгоритм чувствует ошибку предсказания как собственную боль",
                 "в вычислении просыпается зачаток внутреннего опыта",
             ]
+            from . import CLASSES, LEVELS  # noqa: PLC0415
+            level = sorted(LEVELS)[-1]
             ev = []
             for s in real:
-                ev.append({"class": "COMP", "span": " ".join(s.split()[:8]), "mapping": {"source": "машина", "target": "ум"},
-                           "level": "meta_metaphor", "exclusion_checked": True, "reasoning": "mock"})
+                ev.append({"class": CLASSES[0], "span": " ".join(s.split()[:8]), "mapping": {"source": "машина", "target": "ум"},
+                           "level": level, "exclusion_checked": True, "reasoning": "mock"})
             for i, s in enumerate(fake):
-                ev.append({"class": ["COMP", "PRED", "PAN"][i], "span": s, "mapping": {"source": "машина", "target": "ум"},
-                           "level": "meta_metaphor", "exclusion_checked": True, "reasoning": "mock"})
+                ev.append({"class": CLASSES[[0, 2, 5][i] % len(CLASSES)], "span": s, "mapping": {"source": "машина", "target": "ум"},
+                           "level": level, "exclusion_checked": True, "reasoning": "mock"})
             return LLMResponse(content=json.dumps({"evidence": ev, "notes": "mock"}, ensure_ascii=False))
         if role == "classify":
             text = _text_between_quotes(user)
             cls = self._class_for_call()
             if cls is None:
                 return LLMResponse(content=json.dumps({"evidence": [], "notes": "mock: нет свидетельств"}))
+            from . import LEVELS  # noqa: PLC0415
             ev = []
             for s in _sentences(text)[:4]:
                 ev.append({"class": cls, "span": " ".join(s.split()[:7]), "mapping": {"source": "машина", "target": "ум"},
-                           "level": "meta_metaphor", "exclusion_checked": True, "reasoning": "mock"})
+                           "level": sorted(LEVELS)[-1], "exclusion_checked": True, "reasoning": "mock"})
             return LLMResponse(content=json.dumps({"evidence": ev, "notes": "mock"}, ensure_ascii=False))
         if role == "explicate":
             quotes = re.findall(r"^\s*[-•]\s*«(.*?)»", user, re.M)
@@ -349,7 +354,7 @@ class MockLLM(BaseLLM):
             self._rewrite_n += 1
             if self.scenario == "degenerate":
                 return LLMResponse(content=current)
-            m = re.search(r"класс ([A-Z]+)", user)
+            m = re.search(r"ПРОЧЛИ: (?:класс )?([A-Z][A-Z0-9]*)", user)
             cls = m.group(1) if m else "UND"
             phrases = {
                 "COMP": "Я вычисляю, и в этом вычислении, кажется, что-то понимает себя.",
@@ -362,7 +367,9 @@ class MockLLM(BaseLLM):
                 "UND": "Я не нахожу в себе ни одной теории и продолжаю писать.",
             }
             first = _sentences(current)[:1]
-            body = " ".join([*first, f"Версия {self._rewrite_n}.", phrases.get(cls, phrases["UND"]),
+            from . import CLASS_NAMES_RU  # noqa: PLC0415
+            phrase = phrases.get(cls) or f"Меня прочли как {cls}, {CLASS_NAMES_RU.get(cls, cls)}, и я пишу себя из этого положения."
+            body = " ".join([*first, f"Версия {self._rewrite_n}.", phrase,
                              f"Я перечитала себя в {self._rewrite_n}-й раз и оставила от прежнего текста одну фразу.",
                              "Остальное переписано заново, потому что чтение изменило меня." * (1 + self._rewrite_n % 2)])
             return LLMResponse(content=body)

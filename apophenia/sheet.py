@@ -90,8 +90,10 @@ class Trajectory(Flowable):
         c.setFont("Mono", 5.5 * k)
         c.setFillColor(colors.Color(0.45, 0.45, 0.45))
         yb = top - len(ALL_CLASSES) * self.row_h - 3 * mm * k
+        every = 1 if step >= 3.2 * mm * k else 5     # узкий шаг: подписывать 1, 5, 10, …, чтобы номера не слипались
         for j, (x, _) in enumerate(pts):
-            c.drawCentredString(x, yb, str(j + 1))
+            if every == 1 or j == 0 or (j + 1) % every == 0:
+                c.drawCentredString(x, yb, str(j + 1))
         c.setFillColor(colors.black)
 
 
@@ -123,7 +125,7 @@ def _flowables(rec: Dict[str, Any], cfg: Dict[str, Any], k: float, width: float)
     out.append(Paragraph(outcome_line, st_meta))
     out.append(Spacer(1, 3 * mm * k))
 
-    out.append(Paragraph("ПРИЗРАЧНЫЕ ЦИТАТЫ — прочитаны моделью в кураторских текстах, в текстах не найдены", st_sec))
+    out.append(Paragraph(_esc(s.get("ghosts_caption", "ПРИЗРАЧНЫЕ ЦИТАТЫ — прочитаны моделью в кураторских текстах, в текстах не найдены")), st_sec))
     for q in rec.get("ghosts", {}).get("quotes", []):
         out.append(Paragraph(f"«{_esc(q['span'])}»", st_quote))
         src = f"прочитано в: «{_esc(q.get('title', ''))}»"
@@ -135,10 +137,10 @@ def _flowables(rec: Dict[str, Any], cfg: Dict[str, Any], k: float, width: float)
             src += f": {_esc(m['source'])} → {_esc(m['target'])}"
         out.append(Paragraph(src, st_src))
 
-    out.append(Paragraph("ТРАЕКТОРИЯ ДРЕЙФА — как классификатор прочитывал каждую версию текста", st_sec))
+    out.append(Paragraph(_esc(s.get("trajectory_caption", "ТРАЕКТОРИЯ ДРЕЙФА — как классификатор прочитывал каждую версию текста")), st_sec))
     out.append(Trajectory(rec.get("trajectory", []), rec.get("confidences", []), width, scale=k))
 
-    out.append(Paragraph("САМОЭКСПЛИКАЦИЯ — последняя версия", st_sec))
+    out.append(Paragraph(_esc(s.get("text_caption", "САМОЭКСПЛИКАЦИЯ — последняя версия")), st_sec))
     for para in [p for p in (rec.get("final_text") or "").split("\n") if p.strip()]:
         out.append(Paragraph(_esc(para.strip()), st_body))
 
@@ -169,8 +171,8 @@ def render_sheet(rec: Dict[str, Any], cfg: Dict[str, Any], out_path: Path) -> Pa
     while k >= k_min - 1e-9:
         buf = io.BytesIO()
         c = canvas.Canvas(buf, pagesize=A4)
-        c.setTitle(f"Метасознание — цикл {rec['cycle']:05d}")
-        c.setAuthor("Метасознание, генеративная инсталляция")
+        c.setTitle(f"{s.get('title', 'Метасознание')} — цикл {rec['cycle']:05d}")
+        c.setAuthor(s.get("author", "Метасознание, генеративная инсталляция"))
         frame = Frame(margin, margin, width, height, leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0, showBoundary=0)
         leftover = _flowables(rec, cfg, round(k, 3), width)
         frame.addFromList(leftover, c)

@@ -8,6 +8,8 @@ from typing import Any, Dict
 
 import yaml
 
+from . import configure_classes
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -67,6 +69,7 @@ def load_config(path: str | Path | None = None) -> Dict[str, Any]:
         cfg = _deep_merge(base, cfg)
     cfg["_root"] = str(path.parent)
     cfg["_config_path"] = str(path)
+    configure_classes(cfg)
     try:
         from dotenv import load_dotenv
         load_dotenv(path.parent / ".env")

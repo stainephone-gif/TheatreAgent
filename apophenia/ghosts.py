@@ -20,7 +20,8 @@ def collect_ghosts(cfg: Dict[str, Any], llm: BaseLLM, theory: Prompt, corpus: Li
     # верификация для этой роли: по умолчанию как в исследовании, но ghosts.verification переопределяет
     vcfg = {**cfg.get("verification", {}), **(g.get("verification") or {})}
     temp = float(cfg["llm"].get("temperatures", {}).get("ghosts", 1.0))
-    texts = pick_texts(corpus, int(g.get("max_texts_per_cycle", 6)), seed=seed)
+    texts = pick_texts(corpus, int(g.get("max_texts_per_cycle", 6)), seed=seed,
+                       by=str(cfg.get("corpus", {}).get("sample_by", "")))
     quotes: List[Dict[str, Any]] = []
     readings: List[Dict[str, Any]] = []
     for t in texts:

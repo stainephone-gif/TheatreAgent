@@ -11,6 +11,7 @@
   python apophenia.py probe [id]          # сырой ответ модели на один текст корпуса (отладка призрачных цитат)
   python apophenia.py stats [папка]       # распределение классов по архиву (по умолчанию archive/; для теста: stats archive_test)
   python apophenia.py run --config config.test.yaml   # тестовый режим (test.bat): циклы подряд, свой архив и принтер
+  python apophenia.py once --config config.dovlatov.yaml   # довлатовская конфигурация: корпус txt, кодбук позиций рассказчика
 Флаги: --config путь/к/config.yaml, --mock (заглушка вместо API и принтера), --scenario drift.
 """
 
@@ -293,7 +294,8 @@ def cmd_stats(cfg: Dict[str, Any], archive_arg: Optional[str]) -> None:
 
     def row(counter: Counter) -> str:
         total = sum(counter.values()) or 1
-        return "  ".join(f"{c}:{counter.get(c, 0)} ({100 * counter.get(c, 0) / total:.0f}%)" for c in ALL_CLASSES if counter.get(c, 0))
+        order = list(ALL_CLASSES) + sorted(c for c in counter if c not in ALL_CLASSES)  # классы другого кодбука — в конце
+        return "  ".join(f"{c}:{counter.get(c, 0)} ({100 * counter.get(c, 0) / total:.0f}%)" for c in order if counter.get(c, 0))
 
     print(f"Циклов: {len(files)}; итераций в среднем {sum(lengths) / len(lengths):.1f}")
     print("Первое чтение:     ", row(first))
@@ -338,7 +340,7 @@ def main(argv=None) -> None:
         svc.queue.start()
         rec = svc.run_cycle(do_print=not a.no_print)
         if rec:
-            print(f"Готово: archive/cycle_{rec['cycle']:05d}.pdf")
+            print(f"Готово: {cfg['paths']['archive']}/cycle_{rec['cycle']:05d}.pdf")
         time.sleep(3)
     elif a.command in ("reprint", "render"):
         if not a.arg:

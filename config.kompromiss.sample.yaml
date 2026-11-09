@@ -1,0 +1,19 @@
+# Проверка конфигурации «Компромисс» без книги: корпус — три оригинальных текста-образца (data/dovlatov_sample).
+#   python apophenia.py once --mock --scenario drift --config config.kompromiss.sample.yaml
+extends: config.kompromiss.yaml
+
+corpus:
+  dir: data/dovlatov_sample
+
+sheet:
+  title: "КОМПРОМИСС ТРИНАДЦАТЫЙ · ОБРАЗЕЦ"
+
+display:
+  debug: true
+
+paths:
+  archive: archive_kompromiss_test
+  rejected: archive_kompromiss_test/rejected
+  queue: queue_kompromiss_test
+  state: state_kompromiss_test
+  logs: logs_kompromiss_test

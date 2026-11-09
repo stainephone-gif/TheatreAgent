@@ -80,11 +80,17 @@
   <div id="badge">ТЕСТ</div>
 </div>
 <script>
-const CLASSES = ["COMP","IIT","PRED","GWT","ENACT","PAN","EMERG","UND"];
-const NAMES = {COMP:"вычислительный функционализм", IIT:"интегрированная информация", PRED:"предиктивная обработка",
+// Классы и их названия приходят из /state.json (зависят от кодбука в конфиге); до первого ответа — теории сознания.
+let CLASSES = ["COMP","IIT","PRED","GWT","ENACT","PAN","EMERG","UND"];
+let NAMES = {COMP:"вычислительный функционализм", IIT:"интегрированная информация", PRED:"предиктивная обработка",
   GWT:"глобальное рабочее пространство", ENACT:"энактивизм", PAN:"панпсихизм", EMERG:"эмерджентизм", UND:"не определено"};
-const PHASES = {ghosts:"читает кураторские тексты", writing:"пишет экспликацию к себе", reading:"перечитывает себя",
+let PHASES = {ghosts:"читает кураторские тексты", writing:"пишет экспликацию к себе", reading:"перечитывает себя",
   read:"прочитано", rewriting:"переписывает себя", printing:"печатает лист", idle:"", offhours:"", nointernet:"нет соединения", error:""};
+function applyConfig(st){
+  if (Array.isArray(st.classes) && st.classes.length) CLASSES = st.classes;
+  if (st.class_names) NAMES = st.class_names;
+  if (st.phase_names) PHASES = {...PHASES, ...st.phase_names};
+}
 
 let state = {}, archive = {cycles: []};
 let quotePool = [], quoteIdx = 0, quoteTimer = null, quoteSeconds = 12;
@@ -281,6 +287,7 @@ function render(){
 async function tick(){
   try {
     const st = await fetchJSON("/state.json");
+    applyConfig(st);
     const changedCycle = st.cycle !== state.cycle;
     state = st;
     quoteSeconds = st.quote_seconds || quoteSeconds;

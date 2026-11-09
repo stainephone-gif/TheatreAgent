@@ -18,3 +18,24 @@ config.local.yaml
 venv/
 SumatraPDF-settings.txt
 install/SumatraPDF-settings.txt
+# Довлатов: тексты под авторским правом, в git не попадают; рабочие каталоги конфигурации
+data/dovlatov/*.txt
+data/dovlatov_excluded.json
+archive_dovlatov/
+queue_dovlatov/
+state_dovlatov/
+logs_dovlatov/
+archive_dovlatov_test/
+queue_dovlatov_test/
+state_dovlatov_test/
+logs_dovlatov_test/
+# «Компромисс»: текст книги не в git
+data/kompromiss/*.txt
+archive_kompromiss/
+queue_kompromiss/
+state_kompromiss/
+logs_kompromiss/
+archive_kompromiss_test/
+queue_kompromiss_test/
+state_kompromiss_test/
+logs_kompromiss_test/
