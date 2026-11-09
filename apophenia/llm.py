@@ -283,7 +283,8 @@ class ClaudeClient(BaseLLM):
         self._anthropic = anthropic
         key_env = str(c.get("api_key_env", "ANTHROPIC_API_KEY"))
         key = os.getenv(key_env) or None
-        self.client = anthropic.Anthropic(api_key=key, max_retries=int(llm.get("max_retries", 4)),
+        base_url = c.get("base_url") or None              # пусто — адрес по умолчанию (или ANTHROPIC_BASE_URL)
+        self.client = anthropic.Anthropic(api_key=key, base_url=base_url, max_retries=int(llm.get("max_retries", 4)),
                                           timeout=float(llm.get("timeout", 600)))
         self.usage: Dict[str, int] = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "calls": 0}
 
