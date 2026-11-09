@@ -51,10 +51,22 @@ def test_twelve_classes_and_codebook(kcfg):
         assert "### K12 — память" in prompts[kind].system and "COMP" not in prompts[kind].system
 
 
-def test_moderation_is_theatre_stoplist(kcfg):
+def test_moderation_off_for_18plus(kcfg):
     llm = MockLLM("stabilize")
     m = Moderator(kcfg, llm, load_all(kcfg)["moderate"])
-    assert m.check("Партийная газета, редактор, ЦК и вытрезвитель.")["ok"]
+    assert kcfg["moderation"]["enabled"] is False
+    assert m.check("Партийная газета, редактор, ЦК, вытрезвитель и брань.")["ok"]
+    assert not llm.calls
+    kcfg["moderation"]["enabled"] = True    # если включить — только театральный стоп-список брани
+    assert Moderator(kcfg, llm, load_all(kcfg)["moderate"]).check("Партийная газета и ЦК.")["ok"]
+
+
+def test_claude_is_configured(kcfg):
+    c = load_config(ROOT / "config.kompromiss.yaml")
+    assert c["llm"]["provider"] == "claude" and c["llm"]["claude"]["model"] == "claude-opus-5-5"
+    assert c["llm"]["claude"]["effort"]["classify"] == "medium"
+    p = load_all(kcfg)["explicate"].system
+    assert "синтетический журналист" in p and "ВЫРЕЗКА" in p and "КАК БЫЛО" in p
 
 
 def _book(tmp_path, n_heads=12, encoding="cp1251"):

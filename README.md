@@ -189,12 +189,17 @@ python apophenia.py stats archive_dovlatov --config config.dovlatov.yaml
 Уровни: `clipping` (газетная формула), `backstage` (как делалось на самом деле), `reflection` (рассуждение).
 Фрагменты для призрачных цитат выбираются по новеллам равновероятно (`corpus.sample_by: source`), иначе длинные
 восьмая и десятая давали бы почти половину материала. Порог стабилизации 0.65 (классов двенадцать).
-Модерация театральная: стоп-список только брани (`data/stoplist_theatre.txt`), тематическая проверка моделью выключена;
-промпты по-прежнему запрещают машине писать о политике и реальных людях.
+
+Модель — Claude API (`llm.provider: claude`, по умолчанию `claude-opus-5-5`): ключ `ANTHROPIC_API_KEY` кладётся в `.env`,
+пакет `anthropic` ставится из `requirements.txt` (нужен Python 3.10+; на выставочном Python 3.8 остаётся GigaChat).
+Температур у текущих моделей Claude нет: роли различаются глубиной мышления (`llm.claude.effort`: чтение призраков —
+`low`, письмо, переписывание и классификатор — `medium`). Системный промпт с кодбуком кэшируется; при отказе модели
+сервер пробует запасную (`fallbacks: default`). Машина — синтетический журналист: каждая версия текста состоит из
+газетной вырезки о себе и рассказа «как было на самом деле», как главы книги. Спектакль 18+: модерация выключена.
 
 ```
 python tools/prepare_kompromiss.py путь/к/Компромисс.txt            # один раз: книга → data/kompromiss/ (не в git)
-python apophenia.py once --config config.kompromiss.yaml             # настоящий цикл на GigaChat
+python apophenia.py once --config config.kompromiss.yaml             # настоящий цикл на Claude API
 python apophenia.py once --mock --scenario drift --config config.kompromiss.sample.yaml   # без книги и без API
 ```
 
