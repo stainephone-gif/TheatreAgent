@@ -156,7 +156,7 @@ pytest
 ```
 python apophenia.py once --mock --scenario drift --config config.dovlatov.sample.yaml
 python apophenia.py run --mock --config config.dovlatov.sample.yaml        # служба и экран с позициями вместо теорий
-python apophenia.py once --config config.dovlatov.yaml                      # настоящий цикл на Claude API
+python apophenia.py once --config config.dovlatov.yaml                      # настоящий цикл на GigaChat
 python apophenia.py stats archive_dovlatov --config config.dovlatov.yaml
 ```
 
