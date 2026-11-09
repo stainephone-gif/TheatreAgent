@@ -173,3 +173,16 @@ def test_memory_config_is_all_claude_and_main_routes_ghosts():
     assert main["llm"]["providers"] == {"ghosts": "gigachat"} and main["ghosts"]["verify_against"] == "corpus"
     assert mem["llm"]["providers"] == {"ghosts": "claude"} and mem["prompts"]["ghosts"] == "ghosts_kompromiss_memory_v1.md"
     assert "{title}" in (ROOT / "prompts" / mem["prompts"]["ghosts"]).read_text(encoding="utf-8")
+
+
+def test_codebook_echo_is_not_a_ghost_and_calibration_is_hidden_from_reader():
+    from apophenia.prompts import load_all, load_codebook
+    from apophenia.verify_quotes import shares_run
+    c = load_config(ROOT / "config.kompromiss.yaml")
+    assert c["ghosts"]["codebook_echo_words"] == 4
+    book = load_codebook(c)
+    assert shares_run("список тот же, но главных велели поставить вперёд", book, 4)
+    assert not shares_run("трудна дорога от правды к истине", book, 4)
+    p = load_all(c)
+    assert "Калибровочные примеры" in p["theory"].system and "Калибровочные примеры" not in p["ghosts"].system
+    assert "### K12" in p["ghosts"].system and "### UND" in p["ghosts"].system
