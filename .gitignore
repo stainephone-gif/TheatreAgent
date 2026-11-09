@@ -29,3 +29,13 @@ archive_dovlatov_test/
 queue_dovlatov_test/
 state_dovlatov_test/
 logs_dovlatov_test/
+# «Компромисс»: текст книги не в git
+data/kompromiss/*.txt
+archive_kompromiss/
+queue_kompromiss/
+state_kompromiss/
+logs_kompromiss/
+archive_kompromiss_test/
+queue_kompromiss_test/
+state_kompromiss_test/
+logs_kompromiss_test/

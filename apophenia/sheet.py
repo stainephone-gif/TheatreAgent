@@ -90,8 +90,10 @@ class Trajectory(Flowable):
         c.setFont("Mono", 5.5 * k)
         c.setFillColor(colors.Color(0.45, 0.45, 0.45))
         yb = top - len(ALL_CLASSES) * self.row_h - 3 * mm * k
+        every = 1 if step >= 3.2 * mm * k else 5     # узкий шаг: подписывать 1, 5, 10, …, чтобы номера не слипались
         for j, (x, _) in enumerate(pts):
-            c.drawCentredString(x, yb, str(j + 1))
+            if every == 1 or j == 0 or (j + 1) % every == 0:
+                c.drawCentredString(x, yb, str(j + 1))
         c.setFillColor(colors.black)
 
 

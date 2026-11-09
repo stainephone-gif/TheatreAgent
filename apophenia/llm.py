@@ -354,7 +354,7 @@ class MockLLM(BaseLLM):
             self._rewrite_n += 1
             if self.scenario == "degenerate":
                 return LLMResponse(content=current)
-            m = re.search(r"ПРОЧЛИ: (?:класс )?([A-Z]+)", user)
+            m = re.search(r"ПРОЧЛИ: (?:класс )?([A-Z][A-Z0-9]*)", user)
             cls = m.group(1) if m else "UND"
             phrases = {
                 "COMP": "Я вычисляю, и в этом вычислении, кажется, что-то понимает себя.",

@@ -1,0 +1,69 @@
+# «Компромисс» — театральная конфигурация: корпус — книга Довлатова «Компромисс», классы — двенадцать компромиссов
+# (prompts/codebook_kompromiss.md). Машина на сцене пишет экспликацию к себе из призрачных цитат, читатель
+# определяет, какой компромисс она при этом делает, машина переписывает себя.
+# Подготовка текста (один раз):  python tools/prepare_kompromiss.py путь/к/Компромисс.txt
+# Запуск:                        python apophenia.py once --config config.kompromiss.yaml   (с --mock — без API)
+extends: config.yaml
+
+# Порядок — порядок строк на листе и на экране. UND добавляется автоматически.
+classes:
+  - {code: K1,  name: порядок перечисления}
+  - {code: K2,  name: юбилейная заметка}
+  - {code: K3,  name: гостья}
+  - {code: K4,  name: букварь}
+  - {code: K5,  name: публикабельный}
+  - {code: K6,  name: интересный человек}
+  - {code: K7,  name: выбор героя}
+  - {code: K8,  name: телеграмма}
+  - {code: K9,  name: моральная тема}
+  - {code: K10, name: мешают нам жить}
+  - {code: K11, name: чужие похороны}
+  - {code: K12, name: память}
+und_name: без компромисса
+levels: [clipping, backstage, reflection]
+
+corpus:
+  format: txt
+  dir: data/kompromiss               # 00 Вступление.txt, 01 Компромисс первый.txt … (tools/prepare_kompromiss.py); не в git
+  author: "Сергей Довлатов"
+  chunk_words: 300                   # фрагмент ≈ 300 слов, режется по абзацам; короткие новеллы — одним фрагментом
+  chunk_max_words: 600
+  min_words: 120
+  sample_by: source                  # сначала новелла (равновероятно), потом фрагмент: все двенадцать звучат поровну
+  exclude_file: ""                   # корпус целиком; выставочный фильтр 6+ здесь не применяется
+
+prompts:
+  codebook: codebook_kompromiss.md
+  theory: theory_kompromiss_v1.md
+  ghosts: ghosts_kompromiss_v1.md
+  explicate: explicate_kompromiss_v1.md
+  rewrite: rewrite_kompromiss_v1.md
+  und_short: "разрыва между тем, как есть, и тем, как подано, не видно."
+  und_definition: "UND — без компромисса: в тексте нет ни одного места, где правда и её подача расходились бы."
+
+cycle:
+  stabilized_confidence: 0.65        # двенадцать классов: 2 из 3 фрагментов (0.67) уже стабилизируют
+
+moderation:                          # театр, не детская выставка: только брань; тематический фильтр моделью выключен
+  stoplist: data/stoplist_theatre.txt
+  llm_check: false
+
+sheet:
+  title: "КОМПРОМИСС ТРИНАДЦАТЫЙ"
+  author: "Компромисс тринадцатый, машина на сцене"
+  ghosts_caption: "ПРИЗРАЧНЫЕ ЦИТАТЫ — прочитаны моделью в «Компромиссе», в книге не найдены"
+  trajectory_caption: "ТРАЕКТОРИЯ — какой компромисс читатель находил в каждой версии текста"
+  text_caption: "ЭКСПЛИКАЦИЯ К СЕБЕ — последняя версия"
+  footer: ""
+
+display:
+  phases:
+    ghosts: "читает «Компромисс»"
+    writing: "пишет экспликацию к себе"
+
+paths:
+  archive: archive_kompromiss
+  rejected: archive_kompromiss/rejected
+  queue: queue_kompromiss
+  state: state_kompromiss
+  logs: logs_kompromiss

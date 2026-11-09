@@ -74,7 +74,7 @@ def load_txt_corpus(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     out, i = [], 0
     for f in sorted(d.glob("*.txt")):
         raw = clean_text(f.read_text(encoding="utf-8-sig"))
-        title = f.stem.replace("_", " ")
+        title = re.sub(r"^\d+\s+", "", f.stem.replace("_", " "))   # «01 Компромисс первый» → «Компромисс первый»
         for k, chunk in enumerate(split_chunks(raw, target, max_w), start=1):
             n = count_words(chunk)
             if n >= min_w and i not in excluded:
@@ -115,6 +115,22 @@ def load_corpus(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
-def pick_texts(corpus: List[Dict[str, Any]], k: int, seed: Optional[int] = None) -> List[Dict[str, Any]]:
+def pick_texts(corpus: List[Dict[str, Any]], k: int, seed: Optional[int] = None, by: str = "") -> List[Dict[str, Any]]:
+    """k случайных текстов без повторов. by="source": сначала равновероятно выбирается источник (файл, новелла),
+    затем фрагмент внутри него — короткие новеллы звучат так же часто, как длинные."""
     rng = random.Random(seed)
-    return rng.sample(corpus, min(k, len(corpus)))
+    k = min(k, len(corpus))
+    if by != "source":
+        return rng.sample(corpus, k)
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    for t in corpus:
+        groups.setdefault(t.get("source", ""), []).append(t)
+    pools = {s: rng.sample(ts, len(ts)) for s, ts in groups.items()}
+    out: List[Dict[str, Any]] = []
+    while len(out) < k:
+        sources = [s for s in pools if pools[s]]
+        rng.shuffle(sources)
+        for s in sources:
+            if len(out) < k:
+                out.append(pools[s].pop())
+    return out
