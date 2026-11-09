@@ -9,6 +9,9 @@ extends: config.yaml
 # Сэмплирование (temperature) у текущих моделей Claude запрещено: роли различаются глубиной мышления (effort).
 llm:
   provider: claude
+  providers: {ghosts: gigachat}      # призрачные цитаты читает GigaChat (GIGACHAT_CREDENTIALS, модель llm.models.ghosts):
+                                     # Claude копирует текст дословно и призраков не даёт. Без ключа GigaChat —
+                                     # config.kompromiss.memory.yaml (Claude цитирует по памяти)
   claude:
     model: claude-opus-5-5
     models: {}                       # модель по ролям, если нужно: {ghosts: claude-sonnet-5-5}
@@ -60,6 +63,9 @@ prompts:
 cycle:
   stabilized_confidence: 0.65        # двенадцать классов: 2 из 3 фрагментов (0.67) уже стабилизируют
   explication_words: [200, 340]      # вырезка 50–90 слов + рассказ «как было»
+
+ghosts:
+  verify_against: corpus             # призрак — цитата, которой нет нигде в книге, а не только в прочитанном фрагменте
 
 moderation:                          # спектакль 18+: модерация выключена; промпты по-прежнему запрещают реальных людей и организации
   enabled: false

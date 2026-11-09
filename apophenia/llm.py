@@ -455,8 +455,22 @@ class MockLLM(BaseLLM):
         raise ValueError(f"MockLLM: неизвестная роль {role}")
 
 
-def make_llm(cfg: Dict[str, Any]) -> BaseLLM:
-    provider = cfg.get("llm", {}).get("provider", "gigachat")
+class RoutedLLM(BaseLLM):
+    """Разные провайдеры по ролям: llm.providers: {ghosts: gigachat} — призрачные цитаты читает GigaChat,
+    остальные роли — основной провайдер (llm.provider). Модель и счётчик токенов — основного клиента."""
+
+    def __init__(self, default: BaseLLM, by_role: Dict[str, BaseLLM]):
+        self.default = default
+        self.by_role = by_role
+
+    def __getattr__(self, name: str) -> Any:          # model, models, usage, list_models — у основного клиента
+        return getattr(self.__dict__["default"], name)
+
+    def complete(self, role: str, system: str, user: str, temperature: float) -> LLMResponse:
+        return self.by_role.get(role, self.default).complete(role, system, user, temperature)
+
+
+def _make_one(cfg: Dict[str, Any], provider: str) -> BaseLLM:
     if provider == "gigachat":
         return GigaChatClient(cfg)
     if provider == "claude":
@@ -464,3 +478,14 @@ def make_llm(cfg: Dict[str, Any]) -> BaseLLM:
     if provider == "mock":
         return MockLLM(cfg.get("llm", {}).get("mock_scenario", "stabilize"))
     raise ValueError(f"Неизвестный llm.provider: {provider}")
+
+
+def make_llm(cfg: Dict[str, Any]) -> BaseLLM:
+    llm = cfg.get("llm", {})
+    provider = llm.get("provider", "gigachat")
+    default = _make_one(cfg, provider)
+    by_role = {r: str(p) for r, p in (llm.get("providers") or {}).items() if p and p != provider}
+    if provider == "mock" or not by_role:              # заглушка заменяет всех провайдеров сразу
+        return default
+    clients = {p: _make_one(cfg, p) for p in set(by_role.values())}
+    return RoutedLLM(default, {r: clients[p] for r, p in by_role.items()})

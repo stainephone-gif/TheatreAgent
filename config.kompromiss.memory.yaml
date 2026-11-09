@@ -1,0 +1,19 @@
+# «Компромисс» без GigaChat — временная замена для проверки цикла, пока нет ключа GIGACHAT_CREDENTIALS.
+# В основной конфигурации (config.kompromiss.yaml) призрачные цитаты читает GigaChat: он «дочитывает» лишнее.
+# Claude текст перед глазами копирует дословно, поэтому здесь ему текста не дают: он цитирует названную новеллу
+# по памяти, а призраком считается цитата, которой нет нигде в книге.
+#   python apophenia.py once --config config.kompromiss.memory.yaml --no-print
+extends: config.kompromiss.yaml
+
+llm:
+  providers: {ghosts: claude}        # все роли — Claude
+
+prompts:
+  ghosts: ghosts_kompromiss_memory_v1.md
+
+paths:                               # отдельные папки, чтобы пробные листы не смешивались со спектаклем
+  archive: archive_kompromiss_memory
+  rejected: archive_kompromiss_memory/rejected
+  queue: queue_kompromiss_memory
+  state: state_kompromiss_memory
+  logs: logs_kompromiss_memory

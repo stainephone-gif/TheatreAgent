@@ -22,18 +22,20 @@ def collect_ghosts(cfg: Dict[str, Any], llm: BaseLLM, theory: Prompt, corpus: Li
     temp = float(cfg["llm"].get("temperatures", {}).get("ghosts", 1.0))
     texts = pick_texts(corpus, int(g.get("max_texts_per_cycle", 6)), seed=seed,
                        by=str(cfg.get("corpus", {}).get("sample_by", "")))
+    # с чем сверять цитату: text — с прочитанным фрагментом; corpus — со всем корпусом («в книге не найдены»)
+    whole = "\n".join(x["text"] for x in corpus) if str(g.get("verify_against", "text")) == "corpus" else None
     quotes: List[Dict[str, Any]] = []
     readings: List[Dict[str, Any]] = []
     for t in texts:
         try:
-            resp = llm.complete("ghosts", theory.system, theory.user(text=t["text"]), temp)
+            resp = llm.complete("ghosts", theory.system, theory.user(text=t["text"], title=str(t["title"])), temp)
         except LLMRefusal as e:
             log.warning("Текст %s: отказ модели (%s), пропускаем", t["id"], e)
             continue
         data, how = parse_evidence(resp.content)
         if how == "salvaged":
             log.warning("Текст %s: JSON не разобран, фрагменты извлечены из текста ответа", t["id"])
-        records, stats = validate_theory_response(data, t["text"], vcfg)
+        records, stats = validate_theory_response(data, whole or t["text"], vcfg)
         ghosts = [r for r in records if r.get("drop_reason") == "unverified"]
         reading = {"text_id": t["id"], "title": t["title"], "source": t["source"],
                    "n_total": stats["n_total"], "n_kept": stats["n_kept"], "n_unverified": len(ghosts),

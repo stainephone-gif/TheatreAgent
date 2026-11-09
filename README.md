@@ -199,9 +199,16 @@ python apophenia.py stats archive_dovlatov --config config.dovlatov.yaml
 
 ```
 python tools/prepare_kompromiss.py путь/к/Компромисс.txt            # один раз: книга → data/kompromiss/ (не в git)
-python apophenia.py once --config config.kompromiss.yaml             # настоящий цикл на Claude API
+python apophenia.py once --config config.kompromiss.yaml             # настоящий цикл: призраков читает GigaChat, остальное Claude
+python apophenia.py once --config config.kompromiss.memory.yaml --no-print   # без ключа GigaChat: Claude цитирует по памяти
 python apophenia.py once --mock --scenario drift --config config.kompromiss.sample.yaml   # без книги и без API
 ```
+
+Призрачные цитаты читает GigaChat (`llm.providers: {ghosts: gigachat}`, ключ `GIGACHAT_CREDENTIALS`): Claude текст,
+лежащий перед ним, копирует дословно — на проверке 44 цитаты из 44 нашлись в книге, и цикл отбрасывался с `no_ghosts`.
+Призраком считается цитата, которой нет нигде в книге (`ghosts.verify_against: corpus`). Пока ключа GigaChat нет,
+цикл проверяется конфигурацией `config.kompromiss.memory.yaml`: все роли на Claude, новеллу он цитирует по памяти
+(`prompts/ghosts_kompromiss_memory_v1.md`). Расход токенов Claude пишется в запись цикла (`usage`).
 
 ## Локальные настройки и обновление через git
 

@@ -142,3 +142,34 @@ def test_pick_by_source_balances_novellas():
     picked = pick_texts(corpus, 8, seed=1, by="source")
     assert len({t["id"] for t in picked}) == 8 and {t["source"] for t in picked} >= {"s0.txt", "s1.txt", "s2.txt", "long.txt"}
     assert len(pick_texts(corpus[:2], 5, seed=1, by="source")) == 2
+
+
+def test_ghosts_verified_against_whole_corpus(cfg):
+    """verify_against: corpus — цитата из другого фрагмента книги не призрак."""
+    from apophenia.ghosts import collect_ghosts
+    from apophenia.llm import LLMResponse
+    from apophenia.prompts import load_all
+    import json
+    corpus = [{"id": 0, "title": "А", "source": "a", "text": "Первый фрагмент про ипподром и ставки.", "n_words": 6},
+              {"id": 1, "title": "Б", "source": "b", "text": "Второй фрагмент про телеграмму доярки.", "n_words": 6}]
+
+    class Fake:
+        def complete(self, role, system, user, temperature):
+            ev = [{"class": cfg["classes"][0]["code"] if cfg.get("classes") else "GWT", "span": s, "level": None,
+                   "exclusion_checked": True, "mapping": {"source": "a", "target": "b"}}
+                  for s in ("фрагмент про ипподром и ставки", "фрагмент про телеграмму доярки", "этого в книге нет вовсе")]
+            return LLMResponse(content=json.dumps({"evidence": ev}, ensure_ascii=False))
+
+    theory = load_all(cfg)["theory"]
+    cfg["ghosts"] = {**cfg["ghosts"], "min_quotes": 1, "max_texts_per_cycle": 1}
+    n_text = len(collect_ghosts(cfg, Fake(), theory, corpus, seed=1)["quotes"])
+    cfg["ghosts"]["verify_against"] = "corpus"
+    n_corpus = len(collect_ghosts(cfg, Fake(), theory, corpus, seed=1)["quotes"])
+    assert (n_text, n_corpus) == (2, 1)
+
+
+def test_memory_config_is_all_claude_and_main_routes_ghosts():
+    main, mem = load_config(ROOT / "config.kompromiss.yaml"), load_config(ROOT / "config.kompromiss.memory.yaml")
+    assert main["llm"]["providers"] == {"ghosts": "gigachat"} and main["ghosts"]["verify_against"] == "corpus"
+    assert mem["llm"]["providers"] == {"ghosts": "claude"} and mem["prompts"]["ghosts"] == "ghosts_kompromiss_memory_v1.md"
+    assert "{title}" in (ROOT / "prompts" / mem["prompts"]["ghosts"]).read_text(encoding="utf-8")

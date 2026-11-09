@@ -167,4 +167,7 @@ class Engine:
             "finished_at": finished.isoformat(timespec="seconds"),
             "duration_s": round((finished - started).total_seconds(), 1),
         })
+        usage = getattr(self.llm, "usage", None)
+        if isinstance(usage, dict):                    # токены основного провайдера с начала работы процесса
+            record["usage"] = dict(usage)
         return record

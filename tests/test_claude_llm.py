@@ -79,3 +79,27 @@ def test_no_fallbacks_uses_plain_endpoint(monkeypatch):
     c.client = SimpleNamespace(messages=SimpleNamespace(create=lambda **kw: calls.append(kw) or _resp()))
     c.complete("ghosts", "s", "u", 1.0)
     assert calls[0]["model"] == "claude-sonnet-5-5" and "betas" not in calls[0] and calls[0]["output_config"] == {"effort": "low"}
+
+
+def test_providers_by_role_route_ghosts_to_gigachat(monkeypatch):
+    """llm.providers: {ghosts: gigachat} — чтение корпуса идёт в GigaChat, остальные роли в Claude."""
+    from apophenia import llm as L
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setenv("GIGACHAT_CREDENTIALS", "abc")
+    cfg = _cfg()
+    cfg["llm"]["providers"] = {"ghosts": "gigachat", "classify": "claude"}
+    c = make_llm(cfg)
+    assert isinstance(c, L.RoutedLLM) and isinstance(c.default, ClaudeClient)
+    assert set(c.by_role) == {"ghosts"} and isinstance(c.by_role["ghosts"], L.GigaChatClient)
+    assert c.model == "claude-opus-5-5" and c.usage["calls"] == 0
+    seen = []
+    c.default.complete = lambda role, *a: seen.append(("claude", role))
+    c.by_role["ghosts"].complete = lambda role, *a: seen.append(("gigachat", role))
+    c.complete("ghosts", "s", "u", 1.0)
+    c.complete("classify", "s", "u", 0.0)
+    assert seen == [("gigachat", "ghosts"), ("claude", "classify")]
+
+
+def test_mock_ignores_providers():
+    from apophenia.llm import MockLLM
+    assert isinstance(make_llm({"llm": {"provider": "mock", "providers": {"ghosts": "gigachat"}}}), MockLLM)
