@@ -257,6 +257,80 @@ class GigaChatClient(BaseLLM):
         raise LLMError(last_err or "max retries exceeded")
 
 
+class ClaudeClient(BaseLLM):
+    """Claude API (Anthropic SDK). Ключ — ANTHROPIC_API_KEY в .env или окружении (или профиль `ant auth login`).
+
+    У текущих моделей Claude параметры сэмплирования (temperature, top_p) запрещены: глубину и «осторожность»
+    каждой роли задаёт effort (llm.effort: {ghosts: low, classify: medium, ...}). Аргумент temperature игнорируется.
+    Мышление адаптивное и включено всегда. Системный промпт (кодбук) кэшируется.
+    Отказ модели по соображениям безопасности: сервер сам пробует запасную модель (fallbacks: default);
+    если отказали все — LLMRefusal, как цензура GigaChat.
+    """
+
+    FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
+    def __init__(self, cfg: Dict[str, Any]):
+        import anthropic  # noqa: PLC0415 — нужен только для этого провайдера
+
+        llm = cfg["llm"]
+        c = llm.get("claude") or {}
+        self.model = str(c.get("model", "claude-opus-5-5"))
+        self.models: Dict[str, str] = {k: str(v) for k, v in (c.get("models") or {}).items() if v}
+        self.effort: Dict[str, str] = {k: str(v) for k, v in (c.get("effort") or {}).items() if v}
+        self.max_tokens = int(c.get("max_tokens", 16000))
+        self.fallbacks = c.get("fallbacks", "default")   # "default" | [{"model": ...}] | None — без запасной модели
+        self.delay = float(llm.get("request_delay", 0.0))
+        self._anthropic = anthropic
+        key_env = str(c.get("api_key_env", "ANTHROPIC_API_KEY"))
+        key = os.getenv(key_env) or None
+        self.client = anthropic.Anthropic(api_key=key, max_retries=int(llm.get("max_retries", 4)),
+                                          timeout=float(llm.get("timeout", 600)))
+        self.usage: Dict[str, int] = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "calls": 0}
+
+    def list_models(self) -> List[str]:
+        return [m.id for m in self.client.models.list()]
+
+    def complete(self, role: str, system: str, user: str, temperature: float) -> LLMResponse:
+        a = self._anthropic
+        params: Dict[str, Any] = {
+            "model": self.models.get(role, self.model),
+            "max_tokens": self.max_tokens,
+            "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+            "messages": [{"role": "user", "content": user}],
+        }
+        if role in self.effort:
+            params["output_config"] = {"effort": self.effort[role]}
+        try:
+            if self.fallbacks:
+                resp = self.client.beta.messages.create(betas=[self.FALLBACK_BETA], fallbacks=self.fallbacks, **params)
+            else:
+                resp = self.client.messages.create(**params)
+        except a.AuthenticationError as e:
+            raise LLMError(f"Claude: ключ не принят ({e.message}). Проверьте ANTHROPIC_API_KEY в .env") from e
+        except a.BadRequestError as e:
+            raise LLMError(f"Claude: неверный запрос: {e.message}") from e
+        except (a.RateLimitError, a.APIConnectionError, a.APITimeoutError) as e:
+            raise LLMError(f"Claude: нет связи или лимит запросов: {e}") from e
+        except a.APIStatusError as e:
+            raise LLMError(f"Claude HTTP {e.status_code}: {e.message}") from e
+        u = resp.usage
+        self.usage["calls"] += 1
+        self.usage["input"] += int(getattr(u, "input_tokens", 0) or 0)
+        self.usage["output"] += int(getattr(u, "output_tokens", 0) or 0)
+        self.usage["cache_read"] += int(getattr(u, "cache_read_input_tokens", 0) or 0)
+        self.usage["cache_write"] += int(getattr(u, "cache_creation_input_tokens", 0) or 0)
+        if self.delay:
+            time.sleep(self.delay)
+        if resp.stop_reason == "refusal":
+            cat = getattr(getattr(resp, "stop_details", None), "category", None)
+            raise LLMRefusal(f"Claude: отказ модели ({cat or 'без категории'})")
+        content = "".join(b.text for b in resp.content if b.type == "text")
+        return LLMResponse(content=content, finish_reason=resp.stop_reason, raw={
+            "model": resp.model, "usage": {"input": u.input_tokens, "output": u.output_tokens,
+                                           "cache_read": getattr(u, "cache_read_input_tokens", None)},
+            "request_id": getattr(resp, "_request_id", None)})
+
+
 # --------------------------------------------------------------------------- #
 # Заглушка
 # --------------------------------------------------------------------------- #
@@ -384,6 +458,8 @@ def make_llm(cfg: Dict[str, Any]) -> BaseLLM:
     provider = cfg.get("llm", {}).get("provider", "gigachat")
     if provider == "gigachat":
         return GigaChatClient(cfg)
+    if provider == "claude":
+        return ClaudeClient(cfg)
     if provider == "mock":
         return MockLLM(cfg.get("llm", {}).get("mock_scenario", "stabilize"))
     raise ValueError(f"Неизвестный llm.provider: {provider}")
