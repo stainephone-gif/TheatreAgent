@@ -10,7 +10,7 @@ from .corpus import pick_texts
 from .llm import BaseLLM, LLMRefusal, parse_evidence
 from .prompts import Prompt
 from .reading import validate_theory_response
-from .verify_quotes import shares_run
+from .verify_quotes import ghost_defect
 
 log = logging.getLogger("apophenia.ghosts")
 
@@ -25,9 +25,6 @@ def collect_ghosts(cfg: Dict[str, Any], llm: BaseLLM, theory: Prompt, corpus: Li
                        by=str(cfg.get("corpus", {}).get("sample_by", "")))
     # с чем сверять цитату: text — с прочитанным фрагментом; corpus — со всем корпусом («в книге не найдены»)
     whole = "\n".join(x["text"] for x in corpus) if str(g.get("verify_against", "text")) == "corpus" else None
-    # ghosts.codebook_echo_words: N — не брать «цитату», у которой с кодбуком есть общие N слов подряд с промптом читателя (0 — выключено)
-    echo_n = int(g.get("codebook_echo_words", 0) or 0)
-    codebook = theory.system if echo_n else ""     # сверяем с тем, что читатель видел: его промпт с разделами кодбука
     quotes: List[Dict[str, Any]] = []
     readings: List[Dict[str, Any]] = []
     for t in texts:
@@ -40,15 +37,18 @@ def collect_ghosts(cfg: Dict[str, Any], llm: BaseLLM, theory: Prompt, corpus: Li
         if how == "salvaged":
             log.warning("Текст %s: JSON не разобран, фрагменты извлечены из текста ответа", t["id"])
         records, stats = validate_theory_response(data, whole or t["text"], vcfg)
-        ghosts = [r for r in records if r.get("drop_reason") == "unverified"]
-        if echo_n:                                     # эхо кодбука: модель выдала за цитату его формулировку
-            echoes = [r for r in ghosts if shares_run(r["span"], codebook, echo_n)]
-            ghosts = [r for r in ghosts if r not in echoes]
-        else:
-            echoes = []
+        ghosts, defects = [], {"codebook_echo": [], "not_a_quote": []}
+        for r in records:
+            if r.get("drop_reason") != "unverified":
+                continue
+            why = ghost_defect(r["span"], theory.system, g)      # сверяем с тем, что читатель видел: его промпт
+            if why:
+                defects[why].append(r["span"])
+            else:
+                ghosts.append(r)
         reading = {"text_id": t["id"], "title": t["title"], "source": t["source"],
                    "n_total": stats["n_total"], "n_kept": stats["n_kept"], "n_unverified": len(ghosts),
-                   "codebook_echo": [r["span"] for r in echoes],
+                   "codebook_echo": defects["codebook_echo"], "not_a_quote": defects["not_a_quote"],
                    "dropped": stats["dropped"], "finish_reason": resp.finish_reason}
         if stats["n_total"] == 0:
             # ничего не нашлось: сохраняем начало сырого ответа, чтобы понять, JSON это или отказ
