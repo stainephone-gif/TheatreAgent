@@ -230,3 +230,32 @@ def test_defective_ghosts_are_recorded_not_used(cfg):
     out = collect_ghosts(cfg, Fake(), load_all(cfg)["theory"], corpus, seed=1)
     assert [q["span"] for q in out["quotes"]] == ["совсем посторонняя фраза про картофель и венок"]
     assert out["readings"][0]["not_a_quote"] == ["[пересказ] машина думает о себе"]
+
+
+def test_ghosts_come_from_two_novellas(cfg):
+    """min_sources: 2 — чтение продолжается, пока призраки не наберутся из двух новелл; из одной — не больше трёх."""
+    from apophenia.ghosts import collect_ghosts
+    from apophenia.llm import LLMResponse
+    from apophenia.prompts import load_all
+    import json
+    corpus = [{"id": i, "title": f"Новелла {i}", "source": f"{i}.txt", "text": "Текст без этих слов.", "n_words": 4} for i in range(4)]
+
+    class Fake:
+        n = 0
+
+        def complete(self, role, system, user, temperature):
+            Fake.n += 1
+            ev = [{"class": "GWT", "span": f"посторонняя фраза номер {Fake.n} вариант {j} про картофель", "level": None,
+                   "exclusion_checked": True, "mapping": {"source": "a", "target": "b"}} for j in range(5)]
+            return LLMResponse(content=json.dumps({"evidence": ev}, ensure_ascii=False))
+
+    cfg["corpus"] = {**cfg.get("corpus", {}), "sample_by": "source"}
+    cfg["ghosts"] = {**cfg["ghosts"], "min_quotes": 3, "max_quotes": 8, "max_texts_per_cycle": 4,
+                     "min_sources": 2, "max_per_source": 3}
+    out = collect_ghosts(cfg, Fake(), load_all(cfg)["theory"], corpus, seed=1)
+    srcs = [q["source"] for q in out["quotes"]]
+    assert Fake.n == 2 and len(set(srcs)) == 2 and len(srcs) == 6
+    assert srcs[0] != srcs[1]                      # вперемешку
+    kc = load_config(ROOT / "config.kompromiss.yaml")
+    load_config(ROOT / "config.yaml")
+    assert kc["ghosts"]["min_sources"] == 2 and kc["ghosts"]["max_per_source"] == 3

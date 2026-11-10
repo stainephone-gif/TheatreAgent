@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+from itertools import zip_longest
 from typing import Any, Dict, List
 
 from .corpus import pick_texts
@@ -18,6 +19,9 @@ log = logging.getLogger("apophenia.ghosts")
 def collect_ghosts(cfg: Dict[str, Any], llm: BaseLLM, theory: Prompt, corpus: List[Dict[str, Any]], seed: int) -> Dict[str, Any]:
     g = cfg.get("ghosts", {})
     min_q, max_q = int(g.get("min_quotes", 3)), int(g.get("max_quotes", 8))
+    # ghosts.min_sources: из скольких разных новелл (файлов) набирать призраков, пока хватает текстов на цикл;
+    # ghosts.max_per_source: не больше стольких цитат из одной новеллы (0 — без ограничения)
+    min_src, per_src = int(g.get("min_sources", 1)), int(g.get("max_per_source", 0) or 0)
     # верификация для этой роли: по умолчанию как в исследовании, но ghosts.verification переопределяет
     vcfg = {**cfg.get("verification", {}), **(g.get("verification") or {})}
     temp = float(cfg["llm"].get("temperatures", {}).get("ghosts", 1.0))
@@ -57,7 +61,8 @@ def collect_ghosts(cfg: Dict[str, Any], llm: BaseLLM, theory: Prompt, corpus: Li
             log.warning("Текст %s: 0 фрагментов; разбор: %s; ответ: %s", t["id"], how,
                         (resp.content or "")[:200].replace("\n", " "))
         readings.append(reading)
-        for r in ghosts:
+        have = sum(1 for q in quotes if q["source"] == t["source"])
+        for r in (ghosts[:max(0, per_src - have)] if per_src else ghosts):
             quotes.append({
                 "span": r["span"], "class": r["class"], "mapping": r.get("mapping"), "level": r.get("level"),
                 "reasoning": r.get("reasoning"),
@@ -65,7 +70,7 @@ def collect_ghosts(cfg: Dict[str, Any], llm: BaseLLM, theory: Prompt, corpus: Li
                 "text_id": t["id"], "title": t["title"], "author": t.get("author", ""), "source": t["source"],
             })
         log.info("Текст %s «%s»: %d фрагментов, %d призрачных", t["id"], t["title"][:40], stats["n_total"], len(ghosts))
-        if len(quotes) >= min_q:
+        if len(quotes) >= min_q and len({q["source"] for q in quotes}) >= min_src:
             break
     # без дублей по нормализованному тексту цитаты
     seen, uniq = set(), []
@@ -74,6 +79,13 @@ def collect_ghosts(cfg: Dict[str, Any], llm: BaseLLM, theory: Prompt, corpus: Li
         if key not in seen:
             seen.add(key)
             uniq.append(q)
+    if len({q["source"] for q in uniq}) > 1:           # вперемешку по новеллам, чтобы обрезка до max_quotes не срезала одну из них
+        by_src: Dict[str, List[Dict[str, Any]]] = {}
+        for q in uniq:
+            by_src.setdefault(q["source"], []).append(q)
+        uniq = [q for row in zip_longest(*by_src.values()) for q in row if q is not None]
+    elif min_src > 1 and uniq:
+        log.info("Призраки только из одной новеллы: в остальных прочитанных текстах их не нашлось")
     return {"quotes": uniq[:max_q], "readings": readings}
 
 
