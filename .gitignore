@@ -43,3 +43,7 @@ archive_kompromiss_memory/
 queue_kompromiss_memory/
 state_kompromiss_memory/
 logs_kompromiss_memory/
+archive_kompromiss_openrouter/
+queue_kompromiss_openrouter/
+state_kompromiss_openrouter/
+logs_kompromiss_openrouter/

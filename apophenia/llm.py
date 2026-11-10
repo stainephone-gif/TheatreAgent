@@ -332,6 +332,109 @@ class ClaudeClient(BaseLLM):
             "request_id": getattr(resp, "_request_id", None)})
 
 
+class OpenRouterClient(BaseLLM):
+    """OpenRouter (openrouter.ai): один ключ OPENROUTER_API_KEY, модели разных поставщиков по ролям.
+
+    llm.openrouter: {model: anthropic/…, models: {ghosts: meta-llama/…}, effort: {classify: medium}, max_tokens: …}.
+    Температура передаётся только моделям не из семейства anthropic/: у Claude сэмплирование запрещено,
+    там роль настраивается глубиной мышления (effort → reasoning.effort). Счётчик usage включает стоимость в долларах.
+    """
+
+    def __init__(self, cfg: Dict[str, Any]):
+        llm = cfg["llm"]
+        c = llm.get("openrouter") or {}
+        self.model = str(c.get("model", "anthropic/claude-opus-5.5"))
+        self.models: Dict[str, str] = {k: str(v) for k, v in (c.get("models") or {}).items() if v}
+        self.effort: Dict[str, str] = {k: str(v) for k, v in (c.get("effort") or {}).items() if v}
+        self.base_url = str(c.get("base_url", "https://openrouter.ai/api/v1")).rstrip("/")
+        self.max_tokens = int(c.get("max_tokens", 16000))
+        self.max_tokens_by_role: Dict[str, int] = {k: int(v) for k, v in (c.get("max_tokens_by_role") or {}).items()}
+        self.timeout = int(c.get("timeout", 600))
+        self.max_retries = int(llm.get("max_retries", 4))
+        self.delay = float(llm.get("request_delay", 0.0))
+        key_env = str(c.get("api_key_env", "OPENROUTER_API_KEY"))
+        self.key = clean_credentials(os.getenv(key_env, ""))
+        if not self.key:
+            raise RuntimeError(f"Не задан {key_env} (ключ с openrouter.ai/keys). Положите его в .env "
+                               "или используйте llm.provider: mock.")
+        self.usage: Dict[str, Any] = {"input": 0, "output": 0, "calls": 0, "cost": 0.0}
+
+    def _headers(self) -> Dict[str, str]:
+        return {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"}
+
+    def list_models(self) -> List[str]:
+        import requests
+        r = requests.get(f"{self.base_url}/models", headers=self._headers(), timeout=60)
+        r.raise_for_status()
+        return [m.get("id", "") for m in r.json().get("data", [])]
+
+    def complete(self, role: str, system: str, user: str, temperature: float) -> LLMResponse:
+        import requests
+        model = self.models.get(role, self.model)
+        payload: Dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "max_tokens": self.max_tokens_by_role.get(role, self.max_tokens),
+            "usage": {"include": True},
+        }
+        if model.startswith("anthropic/"):
+            if role in self.effort:
+                payload["reasoning"] = {"effort": self.effort[role]}
+        else:
+            payload["temperature"] = float(temperature)
+        last_err = None
+        for attempt in range(self.max_retries):
+            try:
+                r = requests.post(f"{self.base_url}/chat/completions", headers=self._headers(),
+                                  data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), timeout=self.timeout)
+            except requests.RequestException as e:  # сеть
+                last_err = f"сеть: {e}"
+                log.warning("%s; попытка %d/%d", last_err, attempt + 1, self.max_retries)
+                time.sleep(2 ** attempt)
+                continue
+            if r.status_code in (401, 403):
+                raise LLMError(f"OpenRouter: ключ не принят (HTTP {r.status_code}: {r.text[:200]}). Проверьте OPENROUTER_API_KEY в .env")
+            if r.status_code == 402:
+                raise LLMError(f"OpenRouter: на счёте не хватает средств ({r.text[:200]})")
+            if r.status_code == 429 or r.status_code >= 500:
+                wait = 5 * (2 ** attempt)
+                last_err = f"HTTP {r.status_code}: {r.text[:200]}"
+                log.warning("%s; ждём %ss", last_err, wait)
+                time.sleep(wait)
+                continue
+            if r.status_code != 200:
+                raise LLMError(f"OpenRouter HTTP {r.status_code}: {r.text[:300]}")
+            data = r.json()
+            if data.get("error"):                      # ошибка поставщика модели приходит с HTTP 200
+                err = data["error"]
+                code = int(err.get("code") or 0) if str(err.get("code") or "").isdigit() else 0
+                if code == 429 or code >= 500:
+                    last_err = f"поставщик: {str(err.get('message'))[:200]}"
+                    log.warning("%s; попытка %d/%d", last_err, attempt + 1, self.max_retries)
+                    time.sleep(5 * (2 ** attempt))
+                    continue
+                raise LLMError(f"OpenRouter: {str(err.get('message'))[:300]}")
+            choice = (data.get("choices") or [{}])[0]
+            content = (choice.get("message") or {}).get("content") or ""
+            finish = choice.get("finish_reason")
+            u = data.get("usage") or {}
+            self.usage["calls"] += 1
+            self.usage["input"] += int(u.get("prompt_tokens") or 0)
+            self.usage["output"] += int(u.get("completion_tokens") or 0)
+            self.usage["cost"] = round(self.usage["cost"] + float(u.get("cost") or 0.0), 6)
+            by = self.usage.setdefault("by_model", {}).setdefault(data.get("model") or model, {"calls": 0, "cost": 0.0})
+            by["calls"] += 1
+            by["cost"] = round(by["cost"] + float(u.get("cost") or 0.0), 6)
+            if self.delay:
+                time.sleep(self.delay)
+            if finish == "content_filter" or (choice.get("message") or {}).get("refusal"):
+                raise LLMRefusal("OpenRouter: отказ модели (content_filter)")
+            return LLMResponse(content=content, finish_reason=finish, raw={
+                "model": data.get("model"), "usage": {"input": u.get("prompt_tokens"), "output": u.get("completion_tokens"),
+                                                     "cost": u.get("cost")}, "id": data.get("id")})
+        raise LLMError(last_err or "max retries exceeded")
+
+
 # --------------------------------------------------------------------------- #
 # Заглушка
 # --------------------------------------------------------------------------- #
@@ -475,6 +578,8 @@ def _make_one(cfg: Dict[str, Any], provider: str) -> BaseLLM:
         return GigaChatClient(cfg)
     if provider == "claude":
         return ClaudeClient(cfg)
+    if provider == "openrouter":
+        return OpenRouterClient(cfg)
     if provider == "mock":
         return MockLLM(cfg.get("llm", {}).get("mock_scenario", "stabilize"))
     raise ValueError(f"Неизвестный llm.provider: {provider}")

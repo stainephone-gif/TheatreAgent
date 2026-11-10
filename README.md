@@ -201,6 +201,7 @@ python apophenia.py stats archive_dovlatov --config config.dovlatov.yaml
 python tools/prepare_kompromiss.py путь/к/Компромисс.txt            # один раз: книга → data/kompromiss/ (не в git)
 python apophenia.py once --config config.kompromiss.yaml             # настоящий цикл: призраков читает GigaChat, остальное Claude
 python apophenia.py once --config config.kompromiss.memory.yaml --no-print   # без ключа GigaChat: Claude цитирует по памяти
+python apophenia.py once --config config.kompromiss.openrouter.yaml --no-print   # одним ключом OpenRouter: Claude пишет, Llama 8B читает
 python apophenia.py once --mock --scenario drift --config config.kompromiss.sample.yaml   # без книги и без API
 ```
 
@@ -209,6 +210,12 @@ python apophenia.py once --mock --scenario drift --config config.kompromiss.samp
 Призраком считается цитата, которой нет нигде в книге (`ghosts.verify_against: corpus`). Пока ключа GigaChat нет,
 цикл проверяется конфигурацией `config.kompromiss.memory.yaml`: все роли на Claude, новеллу он цитирует по памяти
 (`prompts/ghosts_kompromiss_memory_v1.md`). Расход токенов Claude пишется в запись цикла (`usage`).
+
+Через OpenRouter (`llm.provider: openrouter`, ключ `OPENROUTER_API_KEY` в `.env`) цикл идёт одним ключом:
+`config.kompromiss.openrouter.yaml` — письмо, переписывание и классификация на Claude, чтение призраков на Llama 8B
+(`llm.openrouter.models.ghosts`). Имена моделей — как в каталоге OpenRouter: `python apophenia.py models --config
+config.kompromiss.openrouter.yaml`; сколько призраков даёт читающая модель — `probe`. Стоимость цикла в долларах
+пишется в `usage.cost`.
 
 ## Локальные настройки и обновление через git
 

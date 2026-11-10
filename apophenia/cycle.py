@@ -170,4 +170,5 @@ class Engine:
         usage = getattr(self.llm, "usage", None)
         if isinstance(usage, dict):                    # токены основного провайдера с начала работы процесса
             record["usage"] = dict(usage)
+            log.info("Цикл %d, расход: %s", cycle_no, usage)
         return record
