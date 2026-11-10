@@ -266,9 +266,8 @@ def cmd_probe(svc: Service, text_id: Optional[str]) -> None:
     records, stats = validate_theory_response(data, "\n".join(x["text"] for x in corpus) if whole else t["text"], vcfg)
     echo_n = int(gcfg.get("codebook_echo_words", 0) or 0)
     if echo_n:
-        from apophenia.prompts import load_codebook
         from apophenia.verify_quotes import shares_run
-        book = load_codebook(svc.cfg)
+        book = theory.system
         for r in records:
             if r.get("drop_reason") == "unverified" and shares_run(r.get("span", ""), book, echo_n):
                 r["drop_reason"] = "эхо кодбука"

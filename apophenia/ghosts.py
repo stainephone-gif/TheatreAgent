@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 
 from .corpus import pick_texts
 from .llm import BaseLLM, LLMRefusal, parse_evidence
-from .prompts import Prompt, load_codebook
+from .prompts import Prompt
 from .reading import validate_theory_response
 from .verify_quotes import shares_run
 
@@ -25,9 +25,9 @@ def collect_ghosts(cfg: Dict[str, Any], llm: BaseLLM, theory: Prompt, corpus: Li
                        by=str(cfg.get("corpus", {}).get("sample_by", "")))
     # с чем сверять цитату: text — с прочитанным фрагментом; corpus — со всем корпусом («в книге не найдены»)
     whole = "\n".join(x["text"] for x in corpus) if str(g.get("verify_against", "text")) == "corpus" else None
-    # ghosts.codebook_echo_words: N — не брать «цитату», у которой с кодбуком есть общие N слов подряд (0 — выключено)
+    # ghosts.codebook_echo_words: N — не брать «цитату», у которой с кодбуком есть общие N слов подряд с промптом читателя (0 — выключено)
     echo_n = int(g.get("codebook_echo_words", 0) or 0)
-    codebook = load_codebook(cfg) if echo_n else ""
+    codebook = theory.system if echo_n else ""     # сверяем с тем, что читатель видел: его промпт с разделами кодбука
     quotes: List[Dict[str, Any]] = []
     readings: List[Dict[str, Any]] = []
     for t in texts:

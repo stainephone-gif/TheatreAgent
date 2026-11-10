@@ -180,9 +180,20 @@ def test_codebook_echo_is_not_a_ghost_and_calibration_is_hidden_from_reader():
     from apophenia.verify_quotes import shares_run
     c = load_config(ROOT / "config.kompromiss.yaml")
     assert c["ghosts"]["codebook_echo_words"] == 4
-    book = load_codebook(c)
-    assert shares_run("список тот же, но главных велели поставить вперёд", book, 4)
-    assert not shares_run("трудна дорога от правды к истине", book, 4)
     p = load_all(c)
+    seen = p["ghosts"].system                      # эхо ищется в том, что читатель видел, а не во всём кодбуке
+    assert shares_run("это было переписывание, при котором ничего не добавлено", seen, 4)
+    assert not shares_run("трудна дорога от правды к истине", seen, 4)
+    assert not shares_run("бескорыстное вранье это не ложь а поэзия", seen, 4)   # справка по новеллам читателю не видна
     assert "Калибровочные примеры" in p["theory"].system and "Калибровочные примеры" not in p["ghosts"].system
     assert "### K12" in p["ghosts"].system and "### UND" in p["ghosts"].system
+
+
+def test_novellas_reference_is_outside_prompts():
+    """Справка по сюжетам двенадцати новелл есть в кодбуке, но ни в один промпт не попадает."""
+    from apophenia.prompts import codebook_sections, load_all, load_codebook
+    c = load_config(ROOT / "config.kompromiss.yaml")
+    ref = codebook_sections(load_codebook(c))["novellas"]
+    assert all(f"→ K{i}." in ref for i in range(1, 13)) and ref.count("Как было:") == 12
+    assert all("редактор Туронок дважды" not in p.rendered for p in load_all(c).values())
+    assert class_definition(c, "K12").startswith("K12 — память") and "Мордовия" not in class_definition(c, "K12")
