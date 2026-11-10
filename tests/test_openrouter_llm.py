@@ -80,3 +80,14 @@ def test_kompromiss_openrouter_config(monkeypatch):
     assert isinstance(llm, OpenRouterClient)                     # один клиент на все роли, без GigaChat
     assert llm.models["ghosts"].startswith("meta-llama/") and llm.model.startswith("anthropic/")
     assert c["prompts"]["ghosts"] == "ghosts_kompromiss_v1.md" and c["ghosts"]["codebook_echo_words"] == 4
+
+
+def test_openrouter_memory_config_reads_from_memory(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    try:
+        c = load_config(ROOT / "config.kompromiss.openrouter.memory.yaml")
+    finally:
+        load_config(ROOT / "config.yaml")
+    llm = make_llm(c)
+    assert llm.models["ghosts"].startswith("anthropic/") and llm.max_tokens_by_role["ghosts"] == 16000
+    assert c["prompts"]["ghosts"] == "ghosts_kompromiss_memory_v1.md" and llm.effort["ghosts"] == "low"

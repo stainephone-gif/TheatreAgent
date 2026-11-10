@@ -1,0 +1,16 @@
+# «Компромисс» через OpenRouter, чтение по памяти: текста модели не дают, она цитирует названную новеллу наизусть.
+# Нужна потому, что с фрагментом перед глазами дословно копируют и Claude, и маленькая Llama 8B: призраков нет.
+# Призрак — цитата, которой нет нигде в книге и которая не повторяет кодбук.
+#   python apophenia.py probe --config config.kompromiss.openrouter.memory.yaml 33
+#   python apophenia.py once  --config config.kompromiss.openrouter.memory.yaml --no-print
+extends: config.kompromiss.openrouter.yaml
+
+llm:
+  openrouter:
+    models:
+      ghosts: anthropic/claude-opus-5.5        # читает по памяти та же модель, что пишет; можно поставить любую другую
+    effort: {ghosts: low}
+    max_tokens_by_role: {ghosts: 16000}
+
+prompts:
+  ghosts: ghosts_kompromiss_memory_v1.md

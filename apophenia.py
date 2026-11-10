@@ -253,7 +253,7 @@ def cmd_probe(svc: Service, text_id: Optional[str]) -> None:
     print("-" * 60)
     print(t["text"][:1500])
     print("-" * 60)
-    resp = svc.llm.complete("ghosts", theory.system, theory.user(text=t["text"]), temp)
+    resp = svc.llm.complete("ghosts", theory.system, theory.user(text=t["text"], title=str(t["title"])), temp)
     print(f"finish_reason: {resp.finish_reason}; usage: {resp.raw.get('usage')}")
     print("СЫРОЙ ОТВЕТ:")
     print(resp.content)
@@ -261,8 +261,19 @@ def cmd_probe(svc: Service, text_id: Optional[str]) -> None:
     data, how = parse_evidence(resp.content)
     print("Разбор ответа:", {"json": "JSON разобран", "salvaged": "JSON не разобран, фрагменты извлечены из текста", "none": "не удалось"}[how])
     vcfg = {**svc.cfg.get("verification", {}), **(svc.cfg.get("ghosts", {}).get("verification") or {})}
-    records, stats = validate_theory_response(data, t["text"], vcfg)
-    print(f"фрагментов {stats['n_total']}, в тексте есть {stats['n_kept']}, призрачных {stats['dropped'].get('unverified', 0)}, "
+    gcfg = svc.cfg.get("ghosts", {})
+    whole = str(gcfg.get("verify_against", "text")) == "corpus"     # как в цикле: сверка со всей книгой
+    records, stats = validate_theory_response(data, "\n".join(x["text"] for x in corpus) if whole else t["text"], vcfg)
+    echo_n = int(gcfg.get("codebook_echo_words", 0) or 0)
+    if echo_n:
+        from apophenia.prompts import load_codebook
+        from apophenia.verify_quotes import shares_run
+        book = load_codebook(svc.cfg)
+        for r in records:
+            if r.get("drop_reason") == "unverified" and shares_run(r.get("span", ""), book, echo_n):
+                r["drop_reason"] = "эхо кодбука"
+    print("Сверка: " + ("со всей книгой" if whole else "с этим фрагментом"))
+    print(f"фрагментов {stats['n_total']}, в тексте есть {stats['n_kept']}, призрачных {sum(1 for r in records if r.get('drop_reason') == 'unverified')}, "
           f"прочее {dict((k, v) for k, v in stats['dropped'].items() if k != 'unverified')}")
     for r in records:
         v = r.get("verification") or {}
