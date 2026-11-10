@@ -8,8 +8,9 @@ from typing import Any, Dict, List
 
 from .corpus import pick_texts
 from .llm import BaseLLM, LLMRefusal, parse_evidence
-from .prompts import Prompt
+from .prompts import Prompt, load_codebook
 from .reading import validate_theory_response
+from .verify_quotes import shares_run
 
 log = logging.getLogger("apophenia.ghosts")
 
@@ -22,21 +23,32 @@ def collect_ghosts(cfg: Dict[str, Any], llm: BaseLLM, theory: Prompt, corpus: Li
     temp = float(cfg["llm"].get("temperatures", {}).get("ghosts", 1.0))
     texts = pick_texts(corpus, int(g.get("max_texts_per_cycle", 6)), seed=seed,
                        by=str(cfg.get("corpus", {}).get("sample_by", "")))
+    # с чем сверять цитату: text — с прочитанным фрагментом; corpus — со всем корпусом («в книге не найдены»)
+    whole = "\n".join(x["text"] for x in corpus) if str(g.get("verify_against", "text")) == "corpus" else None
+    # ghosts.codebook_echo_words: N — не брать «цитату», у которой с кодбуком есть общие N слов подряд (0 — выключено)
+    echo_n = int(g.get("codebook_echo_words", 0) or 0)
+    codebook = load_codebook(cfg) if echo_n else ""
     quotes: List[Dict[str, Any]] = []
     readings: List[Dict[str, Any]] = []
     for t in texts:
         try:
-            resp = llm.complete("ghosts", theory.system, theory.user(text=t["text"]), temp)
+            resp = llm.complete("ghosts", theory.system, theory.user(text=t["text"], title=str(t["title"])), temp)
         except LLMRefusal as e:
             log.warning("Текст %s: отказ модели (%s), пропускаем", t["id"], e)
             continue
         data, how = parse_evidence(resp.content)
         if how == "salvaged":
             log.warning("Текст %s: JSON не разобран, фрагменты извлечены из текста ответа", t["id"])
-        records, stats = validate_theory_response(data, t["text"], vcfg)
+        records, stats = validate_theory_response(data, whole or t["text"], vcfg)
         ghosts = [r for r in records if r.get("drop_reason") == "unverified"]
+        if echo_n:                                     # эхо кодбука: модель выдала за цитату его формулировку
+            echoes = [r for r in ghosts if shares_run(r["span"], codebook, echo_n)]
+            ghosts = [r for r in ghosts if r not in echoes]
+        else:
+            echoes = []
         reading = {"text_id": t["id"], "title": t["title"], "source": t["source"],
                    "n_total": stats["n_total"], "n_kept": stats["n_kept"], "n_unverified": len(ghosts),
+                   "codebook_echo": [r["span"] for r in echoes],
                    "dropped": stats["dropped"], "finish_reason": resp.finish_reason}
         if stats["n_total"] == 0:
             # ничего не нашлось: сохраняем начало сырого ответа, чтобы понять, JSON это или отказ

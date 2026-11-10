@@ -11,6 +11,8 @@
 
 {{codebook:theory}}
 
+{{codebook:calibration}}
+
 {{codebook:levels}}
 
 ## Процедура

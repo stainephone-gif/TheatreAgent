@@ -257,6 +257,184 @@ class GigaChatClient(BaseLLM):
         raise LLMError(last_err or "max retries exceeded")
 
 
+class ClaudeClient(BaseLLM):
+    """Claude API (Anthropic SDK). Ключ — ANTHROPIC_API_KEY в .env или окружении (или профиль `ant auth login`).
+
+    У текущих моделей Claude параметры сэмплирования (temperature, top_p) запрещены: глубину и «осторожность»
+    каждой роли задаёт effort (llm.effort: {ghosts: low, classify: medium, ...}). Аргумент temperature игнорируется.
+    Мышление адаптивное и включено всегда. Системный промпт (кодбук) кэшируется.
+    Отказ модели по соображениям безопасности: сервер сам пробует запасную модель (fallbacks: default);
+    если отказали все — LLMRefusal, как цензура GigaChat.
+    """
+
+    FALLBACK_BETA = "server-side-fallback-2026-07-01"
+
+    def __init__(self, cfg: Dict[str, Any]):
+        import anthropic  # noqa: PLC0415 — нужен только для этого провайдера
+
+        llm = cfg["llm"]
+        c = llm.get("claude") or {}
+        self.model = str(c.get("model", "claude-opus-5-5"))
+        self.models: Dict[str, str] = {k: str(v) for k, v in (c.get("models") or {}).items() if v}
+        self.effort: Dict[str, str] = {k: str(v) for k, v in (c.get("effort") or {}).items() if v}
+        self.max_tokens = int(c.get("max_tokens", 16000))
+        self.fallbacks = c.get("fallbacks", "default")   # "default" | [{"model": ...}] | None — без запасной модели
+        self.delay = float(llm.get("request_delay", 0.0))
+        self._anthropic = anthropic
+        key_env = str(c.get("api_key_env", "ANTHROPIC_API_KEY"))
+        key = os.getenv(key_env) or None
+        base_url = c.get("base_url") or None              # пусто — адрес по умолчанию (или ANTHROPIC_BASE_URL)
+        self.client = anthropic.Anthropic(api_key=key, base_url=base_url, max_retries=int(llm.get("max_retries", 4)),
+                                          timeout=float(llm.get("timeout", 600)))
+        self.usage: Dict[str, int] = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "calls": 0}
+
+    def list_models(self) -> List[str]:
+        return [m.id for m in self.client.models.list()]
+
+    def complete(self, role: str, system: str, user: str, temperature: float) -> LLMResponse:
+        a = self._anthropic
+        params: Dict[str, Any] = {
+            "model": self.models.get(role, self.model),
+            "max_tokens": self.max_tokens,
+            "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+            "messages": [{"role": "user", "content": user}],
+        }
+        if role in self.effort:
+            params["output_config"] = {"effort": self.effort[role]}
+        try:
+            if self.fallbacks:
+                resp = self.client.beta.messages.create(betas=[self.FALLBACK_BETA], fallbacks=self.fallbacks, **params)
+            else:
+                resp = self.client.messages.create(**params)
+        except a.AuthenticationError as e:
+            raise LLMError(f"Claude: ключ не принят ({e.message}). Проверьте ANTHROPIC_API_KEY в .env") from e
+        except a.BadRequestError as e:
+            raise LLMError(f"Claude: неверный запрос: {e.message}") from e
+        except (a.RateLimitError, a.APIConnectionError, a.APITimeoutError) as e:
+            raise LLMError(f"Claude: нет связи или лимит запросов: {e}") from e
+        except a.APIStatusError as e:
+            raise LLMError(f"Claude HTTP {e.status_code}: {e.message}") from e
+        u = resp.usage
+        self.usage["calls"] += 1
+        self.usage["input"] += int(getattr(u, "input_tokens", 0) or 0)
+        self.usage["output"] += int(getattr(u, "output_tokens", 0) or 0)
+        self.usage["cache_read"] += int(getattr(u, "cache_read_input_tokens", 0) or 0)
+        self.usage["cache_write"] += int(getattr(u, "cache_creation_input_tokens", 0) or 0)
+        if self.delay:
+            time.sleep(self.delay)
+        if resp.stop_reason == "refusal":
+            cat = getattr(getattr(resp, "stop_details", None), "category", None)
+            raise LLMRefusal(f"Claude: отказ модели ({cat or 'без категории'})")
+        content = "".join(b.text for b in resp.content if b.type == "text")
+        return LLMResponse(content=content, finish_reason=resp.stop_reason, raw={
+            "model": resp.model, "usage": {"input": u.input_tokens, "output": u.output_tokens,
+                                           "cache_read": getattr(u, "cache_read_input_tokens", None)},
+            "request_id": getattr(resp, "_request_id", None)})
+
+
+class OpenRouterClient(BaseLLM):
+    """OpenRouter (openrouter.ai): один ключ OPENROUTER_API_KEY, модели разных поставщиков по ролям.
+
+    llm.openrouter: {model: anthropic/…, models: {ghosts: meta-llama/…}, effort: {classify: medium}, max_tokens: …}.
+    Температура передаётся только моделям не из семейства anthropic/: у Claude сэмплирование запрещено,
+    там роль настраивается глубиной мышления (effort → reasoning.effort). Счётчик usage включает стоимость в долларах.
+    """
+
+    def __init__(self, cfg: Dict[str, Any]):
+        llm = cfg["llm"]
+        c = llm.get("openrouter") or {}
+        self.model = str(c.get("model", "anthropic/claude-opus-5.5"))
+        self.models: Dict[str, str] = {k: str(v) for k, v in (c.get("models") or {}).items() if v}
+        self.effort: Dict[str, str] = {k: str(v) for k, v in (c.get("effort") or {}).items() if v}
+        self.base_url = str(c.get("base_url", "https://openrouter.ai/api/v1")).rstrip("/")
+        self.max_tokens = int(c.get("max_tokens", 16000))
+        self.max_tokens_by_role: Dict[str, int] = {k: int(v) for k, v in (c.get("max_tokens_by_role") or {}).items()}
+        self.timeout = int(c.get("timeout", 600))
+        self.max_retries = int(llm.get("max_retries", 4))
+        self.delay = float(llm.get("request_delay", 0.0))
+        key_env = str(c.get("api_key_env", "OPENROUTER_API_KEY"))
+        self.key = clean_credentials(os.getenv(key_env, ""))
+        if not self.key:
+            raise RuntimeError(f"Не задан {key_env} (ключ с openrouter.ai/keys). Положите его в .env "
+                               "или используйте llm.provider: mock.")
+        self.usage: Dict[str, Any] = {"input": 0, "output": 0, "calls": 0, "cost": 0.0}
+
+    def _headers(self) -> Dict[str, str]:
+        return {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"}
+
+    def list_models(self) -> List[str]:
+        import requests
+        r = requests.get(f"{self.base_url}/models", headers=self._headers(), timeout=60)
+        r.raise_for_status()
+        return [m.get("id", "") for m in r.json().get("data", [])]
+
+    def complete(self, role: str, system: str, user: str, temperature: float) -> LLMResponse:
+        import requests
+        model = self.models.get(role, self.model)
+        payload: Dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+            "max_tokens": self.max_tokens_by_role.get(role, self.max_tokens),
+            "usage": {"include": True},
+        }
+        if model.startswith("anthropic/"):
+            if role in self.effort:
+                payload["reasoning"] = {"effort": self.effort[role]}
+        else:
+            payload["temperature"] = float(temperature)
+        last_err = None
+        for attempt in range(self.max_retries):
+            try:
+                r = requests.post(f"{self.base_url}/chat/completions", headers=self._headers(),
+                                  data=json.dumps(payload, ensure_ascii=False).encode("utf-8"), timeout=self.timeout)
+            except requests.RequestException as e:  # сеть
+                last_err = f"сеть: {e}"
+                log.warning("%s; попытка %d/%d", last_err, attempt + 1, self.max_retries)
+                time.sleep(2 ** attempt)
+                continue
+            if r.status_code in (401, 403):
+                raise LLMError(f"OpenRouter: ключ не принят (HTTP {r.status_code}: {r.text[:200]}). Проверьте OPENROUTER_API_KEY в .env")
+            if r.status_code == 402:
+                raise LLMError(f"OpenRouter: на счёте не хватает средств ({r.text[:200]})")
+            if r.status_code == 429 or r.status_code >= 500:
+                wait = 5 * (2 ** attempt)
+                last_err = f"HTTP {r.status_code}: {r.text[:200]}"
+                log.warning("%s; ждём %ss", last_err, wait)
+                time.sleep(wait)
+                continue
+            if r.status_code != 200:
+                raise LLMError(f"OpenRouter HTTP {r.status_code}: {r.text[:300]}")
+            data = r.json()
+            if data.get("error"):                      # ошибка поставщика модели приходит с HTTP 200
+                err = data["error"]
+                code = int(err.get("code") or 0) if str(err.get("code") or "").isdigit() else 0
+                if code == 429 or code >= 500:
+                    last_err = f"поставщик: {str(err.get('message'))[:200]}"
+                    log.warning("%s; попытка %d/%d", last_err, attempt + 1, self.max_retries)
+                    time.sleep(5 * (2 ** attempt))
+                    continue
+                raise LLMError(f"OpenRouter: {str(err.get('message'))[:300]}")
+            choice = (data.get("choices") or [{}])[0]
+            content = (choice.get("message") or {}).get("content") or ""
+            finish = choice.get("finish_reason")
+            u = data.get("usage") or {}
+            self.usage["calls"] += 1
+            self.usage["input"] += int(u.get("prompt_tokens") or 0)
+            self.usage["output"] += int(u.get("completion_tokens") or 0)
+            self.usage["cost"] = round(self.usage["cost"] + float(u.get("cost") or 0.0), 6)
+            by = self.usage.setdefault("by_model", {}).setdefault(data.get("model") or model, {"calls": 0, "cost": 0.0})
+            by["calls"] += 1
+            by["cost"] = round(by["cost"] + float(u.get("cost") or 0.0), 6)
+            if self.delay:
+                time.sleep(self.delay)
+            if finish == "content_filter" or (choice.get("message") or {}).get("refusal"):
+                raise LLMRefusal("OpenRouter: отказ модели (content_filter)")
+            return LLMResponse(content=content, finish_reason=finish, raw={
+                "model": data.get("model"), "usage": {"input": u.get("prompt_tokens"), "output": u.get("completion_tokens"),
+                                                     "cost": u.get("cost")}, "id": data.get("id")})
+        raise LLMError(last_err or "max retries exceeded")
+
+
 # --------------------------------------------------------------------------- #
 # Заглушка
 # --------------------------------------------------------------------------- #
@@ -380,10 +558,39 @@ class MockLLM(BaseLLM):
         raise ValueError(f"MockLLM: неизвестная роль {role}")
 
 
-def make_llm(cfg: Dict[str, Any]) -> BaseLLM:
-    provider = cfg.get("llm", {}).get("provider", "gigachat")
+class RoutedLLM(BaseLLM):
+    """Разные провайдеры по ролям: llm.providers: {ghosts: gigachat} — призрачные цитаты читает GigaChat,
+    остальные роли — основной провайдер (llm.provider). Модель и счётчик токенов — основного клиента."""
+
+    def __init__(self, default: BaseLLM, by_role: Dict[str, BaseLLM]):
+        self.default = default
+        self.by_role = by_role
+
+    def __getattr__(self, name: str) -> Any:          # model, models, usage, list_models — у основного клиента
+        return getattr(self.__dict__["default"], name)
+
+    def complete(self, role: str, system: str, user: str, temperature: float) -> LLMResponse:
+        return self.by_role.get(role, self.default).complete(role, system, user, temperature)
+
+
+def _make_one(cfg: Dict[str, Any], provider: str) -> BaseLLM:
     if provider == "gigachat":
         return GigaChatClient(cfg)
+    if provider == "claude":
+        return ClaudeClient(cfg)
+    if provider == "openrouter":
+        return OpenRouterClient(cfg)
     if provider == "mock":
         return MockLLM(cfg.get("llm", {}).get("mock_scenario", "stabilize"))
     raise ValueError(f"Неизвестный llm.provider: {provider}")
+
+
+def make_llm(cfg: Dict[str, Any]) -> BaseLLM:
+    llm = cfg.get("llm", {})
+    provider = llm.get("provider", "gigachat")
+    default = _make_one(cfg, provider)
+    by_role = {r: str(p) for r, p in (llm.get("providers") or {}).items() if p and p != provider}
+    if provider == "mock" or not by_role:              # заглушка заменяет всех провайдеров сразу
+        return default
+    clients = {p: _make_one(cfg, p) for p in set(by_role.values())}
+    return RoutedLLM(default, {r: clients[p] for r, p in by_role.items()})

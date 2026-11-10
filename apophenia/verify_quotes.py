@@ -103,3 +103,12 @@ def select_independent(spans: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]
         else:
             dropped.append(s)
     return kept, dropped
+
+
+def shares_run(span: str, text: str, n: int = 4) -> bool:
+    """Есть ли у цитаты и текста общая цепочка из n слов подряд (после нормализации)."""
+    sp, tx = tokens(span), tokens(text)
+    if n <= 0 or len(sp) < n or len(tx) < n:
+        return False
+    grams = {tuple(tx[i:i + n]) for i in range(len(tx) - n + 1)}
+    return any(tuple(sp[i:i + n]) in grams for i in range(len(sp) - n + 1))

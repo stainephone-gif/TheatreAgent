@@ -189,14 +189,33 @@ python apophenia.py stats archive_dovlatov --config config.dovlatov.yaml
 Уровни: `clipping` (газетная формула), `backstage` (как делалось на самом деле), `reflection` (рассуждение).
 Фрагменты для призрачных цитат выбираются по новеллам равновероятно (`corpus.sample_by: source`), иначе длинные
 восьмая и десятая давали бы почти половину материала. Порог стабилизации 0.65 (классов двенадцать).
-Модерация театральная: стоп-список только брани (`data/stoplist_theatre.txt`), тематическая проверка моделью выключена;
-промпты по-прежнему запрещают машине писать о политике и реальных людях.
+
+Модель — Claude API (`llm.provider: claude`, по умолчанию `claude-opus-5-5`): ключ `ANTHROPIC_API_KEY` кладётся в `.env`,
+пакет `anthropic` ставится из `requirements.txt` (нужен Python 3.10+; на выставочном Python 3.8 остаётся GigaChat).
+Температур у текущих моделей Claude нет: роли различаются глубиной мышления (`llm.claude.effort`: чтение призраков —
+`low`, письмо, переписывание и классификатор — `medium`). Системный промпт с кодбуком кэшируется; при отказе модели
+сервер пробует запасную (`fallbacks: default`). Машина — синтетический журналист: каждая версия текста состоит из
+газетной вырезки о себе и рассказа «как было на самом деле», как главы книги. Спектакль 18+: модерация выключена.
 
 ```
 python tools/prepare_kompromiss.py путь/к/Компромисс.txt            # один раз: книга → data/kompromiss/ (не в git)
-python apophenia.py once --config config.kompromiss.yaml             # настоящий цикл на GigaChat
+python apophenia.py once --config config.kompromiss.yaml             # настоящий цикл: призраков читает GigaChat, остальное Claude
+python apophenia.py once --config config.kompromiss.memory.yaml --no-print   # без ключа GigaChat: Claude цитирует по памяти
+python apophenia.py once --config config.kompromiss.openrouter.yaml --no-print   # одним ключом OpenRouter: Claude пишет, Llama 8B читает
 python apophenia.py once --mock --scenario drift --config config.kompromiss.sample.yaml   # без книги и без API
 ```
+
+Призрачные цитаты читает GigaChat (`llm.providers: {ghosts: gigachat}`, ключ `GIGACHAT_CREDENTIALS`): Claude текст,
+лежащий перед ним, копирует дословно — на проверке 44 цитаты из 44 нашлись в книге, и цикл отбрасывался с `no_ghosts`.
+Призраком считается цитата, которой нет нигде в книге (`ghosts.verify_against: corpus`). Пока ключа GigaChat нет,
+цикл проверяется конфигурацией `config.kompromiss.memory.yaml`: все роли на Claude, новеллу он цитирует по памяти
+(`prompts/ghosts_kompromiss_memory_v1.md`). Расход токенов Claude пишется в запись цикла (`usage`).
+
+Через OpenRouter (`llm.provider: openrouter`, ключ `OPENROUTER_API_KEY` в `.env`) цикл идёт одним ключом:
+`config.kompromiss.openrouter.yaml` — письмо, переписывание и классификация на Claude, чтение призраков на Llama 8B
+(`llm.openrouter.models.ghosts`). Имена моделей — как в каталоге OpenRouter: `python apophenia.py models --config
+config.kompromiss.openrouter.yaml`; сколько призраков даёт читающая модель — `probe`. Стоимость цикла в долларах
+пишется в `usage.cost`.
 
 ## Локальные настройки и обновление через git
 
