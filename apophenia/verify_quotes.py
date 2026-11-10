@@ -105,10 +105,46 @@ def select_independent(spans: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]
     return kept, dropped
 
 
-def shares_run(span: str, text: str, n: int = 4) -> bool:
-    """Есть ли у цитаты и текста общая цепочка из n слов подряд (после нормализации)."""
+def shares_run(span: str, text: str, n: int = 4, min_content: int = 0) -> bool:
+    """Есть ли у цитаты и текста общая цепочка из n слов подряд (после нормализации).
+    min_content — сколько слов длиннее трёх букв должно быть в цепочке: отсекает совпадения из одних служебных слов."""
     sp, tx = tokens(span), tokens(text)
     if n <= 0 or len(sp) < n or len(tx) < n:
         return False
     grams = {tuple(tx[i:i + n]) for i in range(len(tx) - n + 1)}
-    return any(tuple(sp[i:i + n]) in grams for i in range(len(sp) - n + 1))
+    for i in range(len(sp) - n + 1):
+        g = tuple(sp[i:i + n])
+        if g in grams and sum(len(w) > 3 for w in g) >= min_content:
+            return True
+    return False
+
+
+def content_overlap(span: str, text: str) -> Tuple[float, int]:
+    """(доля, число): сколько знаменательных слов цитаты (длиннее трёх букв) есть в тексте, с учётом словоформ."""
+    words = [w for w in tokens(span) if len(w) > 3]
+    if not words:
+        return 0.0, 0
+    src = set(tokens(text))
+    return sum(_token_matches(w, src) for w in words) / len(words), len(words)
+
+
+_NOT_QUOTE_RE = re.compile(r"[\[\]{}<>]|пересказ|не цитата|по памяти|примерно так|что-то вроде|дословно не помн", re.I)
+
+
+def ghost_defect(span: str, seen: str, gcfg: Dict[str, Any]) -> Optional[str]:
+    """Почему непроверенная «цитата» не годится в призраки: not_a_quote — пометка или пересказ вместо фразы;
+    codebook_echo — формулировка промпта читателя, выданная за цитату. None — годится.
+
+    ghosts.codebook_echo_words: N — общая цепочка из N слов подряд, из них не меньше двух знаменательных;
+    ghosts.codebook_echo_overlap: доля знаменательных слов цитаты, найденных в промпте (при трёх и более словах)."""
+    if _NOT_QUOTE_RE.search(span or ""):
+        return "not_a_quote"
+    n = int(gcfg.get("codebook_echo_words", 0) or 0)
+    if n and shares_run(span, seen, n, min_content=min(2, n)):
+        return "codebook_echo"
+    thr = float(gcfg.get("codebook_echo_overlap", 0) or 0)
+    if thr:
+        share, count = content_overlap(span, seen)
+        if count >= 3 and share >= thr:
+            return "codebook_echo"
+    return None

@@ -264,13 +264,13 @@ def cmd_probe(svc: Service, text_id: Optional[str]) -> None:
     gcfg = svc.cfg.get("ghosts", {})
     whole = str(gcfg.get("verify_against", "text")) == "corpus"     # как в цикле: сверка со всей книгой
     records, stats = validate_theory_response(data, "\n".join(x["text"] for x in corpus) if whole else t["text"], vcfg)
-    echo_n = int(gcfg.get("codebook_echo_words", 0) or 0)
-    if echo_n:
-        from apophenia.verify_quotes import shares_run
-        book = theory.system
-        for r in records:
-            if r.get("drop_reason") == "unverified" and shares_run(r.get("span", ""), book, echo_n):
-                r["drop_reason"] = "эхо кодбука"
+    from apophenia.verify_quotes import ghost_defect
+    names = {"codebook_echo": "эхо кодбука", "not_a_quote": "не цитата"}
+    for r in records:
+        if r.get("drop_reason") == "unverified":
+            why = ghost_defect(r.get("span", ""), theory.system, gcfg)
+            if why:
+                r["drop_reason"] = names[why]
     print("Сверка: " + ("со всей книгой" if whole else "с этим фрагментом"))
     print(f"фрагментов {stats['n_total']}, в тексте есть {stats['n_kept']}, призрачных {sum(1 for r in records if r.get('drop_reason') == 'unverified')}, "
           f"прочее {dict((k, v) for k, v in stats['dropped'].items() if k != 'unverified')}")

@@ -179,7 +179,7 @@ def test_codebook_echo_is_not_a_ghost_and_calibration_is_hidden_from_reader():
     from apophenia.prompts import load_all, load_codebook
     from apophenia.verify_quotes import shares_run
     c = load_config(ROOT / "config.kompromiss.yaml")
-    assert c["ghosts"]["codebook_echo_words"] == 4
+    assert c["ghosts"]["codebook_echo_words"] == 3 and c["ghosts"]["codebook_echo_overlap"] == 0.8
     p = load_all(c)
     seen = p["ghosts"].system                      # эхо ищется в том, что читатель видел, а не во всём кодбуке
     assert shares_run("это было переписывание, при котором ничего не добавлено", seen, 4)
@@ -197,3 +197,36 @@ def test_novellas_reference_is_outside_prompts():
     assert all(f"→ K{i}." in ref for i in range(1, 13)) and ref.count("Как было:") == 12
     assert all("редактор Туронок дважды" not in p.rendered for p in load_all(c).values())
     assert class_definition(c, "K12").startswith("K12 — память") and "Мордовия" not in class_definition(c, "K12")
+
+
+def test_ghost_defects_from_real_sheets():
+    """Дефекты листов 00002 и 00003: формулировка кодбука и пересказ с пометкой — не призраки."""
+    from apophenia.prompts import load_all
+    from apophenia.verify_quotes import ghost_defect
+    c = load_config(ROOT / "config.kompromiss.memory.yaml")
+    seen, g = load_all(c)["ghosts"].system, c["ghosts"]
+    assert ghost_defect("Речь звучала над чужим гробом", seen, g) == "codebook_echo"
+    assert ghost_defect("[пересказ, не цитата] журналист изображает живой интерес к собеседнику", seen, g) == "not_a_quote"
+    assert ghost_defect("примерно так: он сказал, что устал", seen, g) == "not_a_quote"
+    for ok in ("Главное, чтобы мероприятие прошло организованно", "Жбанков уснул лицом в картофель",
+               "Он читал по бумажке, не поднимая глаз"):
+        assert ghost_defect(ok, seen, g) is None
+
+
+def test_defective_ghosts_are_recorded_not_used(cfg):
+    from apophenia.ghosts import collect_ghosts
+    from apophenia.llm import LLMResponse
+    from apophenia.prompts import load_all
+    import json
+
+    class Fake:
+        def complete(self, role, system, user, temperature):
+            ev = [{"class": "GWT", "span": s, "level": None, "exclusion_checked": True, "mapping": {"source": "a", "target": "b"}}
+                  for s in ("[пересказ] машина думает о себе", "совсем посторонняя фраза про картофель и венок")]
+            return LLMResponse(content=json.dumps({"evidence": ev}, ensure_ascii=False))
+
+    corpus = [{"id": 0, "title": "А", "source": "a", "text": "Текст без этих слов.", "n_words": 4}]
+    cfg["ghosts"] = {**cfg["ghosts"], "min_quotes": 1, "max_texts_per_cycle": 1}
+    out = collect_ghosts(cfg, Fake(), load_all(cfg)["theory"], corpus, seed=1)
+    assert [q["span"] for q in out["quotes"]] == ["совсем посторонняя фраза про картофель и венок"]
+    assert out["readings"][0]["not_a_quote"] == ["[пересказ] машина думает о себе"]

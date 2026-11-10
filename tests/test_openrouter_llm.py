@@ -79,7 +79,7 @@ def test_kompromiss_openrouter_config(monkeypatch):
     llm = make_llm(c)
     assert isinstance(llm, OpenRouterClient)                     # один клиент на все роли, без GigaChat
     assert llm.models["ghosts"].startswith("meta-llama/") and llm.model.startswith("anthropic/")
-    assert c["prompts"]["ghosts"] == "ghosts_kompromiss_v1.md" and c["ghosts"]["codebook_echo_words"] == 4
+    assert c["prompts"]["ghosts"] == "ghosts_kompromiss_v1.md" and c["ghosts"]["codebook_echo_words"] == 3
 
 
 def test_openrouter_memory_config_reads_from_memory(monkeypatch):
