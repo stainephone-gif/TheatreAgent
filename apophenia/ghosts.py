@@ -89,5 +89,15 @@ def collect_ghosts(cfg: Dict[str, Any], llm: BaseLLM, theory: Prompt, corpus: Li
     return {"quotes": uniq[:max_q], "readings": readings}
 
 
-def format_quotes(quotes: List[Dict[str, Any]]) -> str:
-    return "\n".join(f"- «{q['span']}»" for q in quotes)
+def format_quotes(quotes: List[Dict[str, Any]], group: bool = False) -> str:
+    """Список цитат для промптов письма. group (ghosts.group_by_source): цитаты из разных источников идут
+    отдельными группами без названий — пишущая модель видит, что материал из двух мест, и должна свести их."""
+    sources = list(dict.fromkeys(q.get("source", "") for q in quotes))
+    if not group or len(sources) < 2:
+        return "\n".join(f"- «{q['span']}»" for q in quotes)
+    names = ["Первая глава", "Вторая глава", "Третья глава", "Четвёртая глава"]
+    blocks = []
+    for i, src in enumerate(sources):
+        head = names[i] if i < len(names) else f"Глава {i + 1}"
+        blocks.append(head + ":\n" + "\n".join(f"- «{q['span']}»" for q in quotes if q.get("source", "") == src))
+    return "\n".join(blocks)

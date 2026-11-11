@@ -282,3 +282,31 @@ def test_literary_sheet(kcfg, tmp_path):
     assert "K11" not in words and "фрагмент 8" not in words and "за 3 минуты" in words
     data = render_sheet(rec, c, tmp_path / "book.pdf").read_bytes()
     assert data.count(b"/Type /Page") - data.count(b"/Type /Pages") == 1
+
+
+def test_quotes_grouped_by_chapter_for_writer():
+    from apophenia.ghosts import format_quotes
+    from apophenia.prompts import load_all
+    qs = [{"span": "а", "source": "03.txt"}, {"span": "б", "source": "12.txt"}, {"span": "в", "source": "03.txt"}]
+    assert format_quotes(qs) == "- «а»\n- «б»\n- «в»"
+    assert format_quotes(qs, group=True) == "Первая глава:\n- «а»\n- «в»\nВторая глава:\n- «б»"
+    assert format_quotes(qs[:1], group=True) == "- «а»"
+    c = load_config(ROOT / "config.kompromiss.yaml")
+    p = load_all(c)
+    assert c["ghosts"]["group_by_source"] is True
+    assert "обе группы" in p["explicate"].system and "описание, а не материал" in p["rewrite"].system
+    assert "пусть врёт, это поэзия" not in p["rewrite"].rendered + p["theory"].rendered
+
+
+def test_once_stops_cleanly_on_api_failure(kcfg, main_mod, monkeypatch, capsys):
+    """Сбой связи посреди цикла: лист не печатается, номер цикла не расходуется, программа выходит без трассировки."""
+    from apophenia.llm import LLMError
+    svc = main_mod.Service(kcfg, mock=True)
+
+    def boom(*a, **k):
+        raise LLMError("OpenRouter: на счёте не хватает средств")
+
+    monkeypatch.setattr(svc.engine, "run", boom)
+    with pytest.raises(LLMError):
+        svc.run_cycle(do_print=False)
+    assert svc.state.next_cycle_number() == 1 and not list(svc.archive.glob("cycle_*.pdf"))

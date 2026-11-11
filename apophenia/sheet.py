@@ -196,7 +196,7 @@ def _flowables_literary(rec: Dict[str, Any], cfg: Dict[str, Any], k: float, widt
             where = (q.get("title", "") or "").split(", фрагмент")[0]
             src = f"будто бы из главы «{_esc(where)}»" if where else ""
             if q.get("class"):
-                src += f" · машина увидела здесь компромисс {_esc(title(q['class']))}"
+                src += f" · машина увидела здесь компромисс {_esc(title(q['class']).split(' — ', 1)[-1])}"
             out.append(Paragraph(src, st_src))
 
     out.append(Paragraph(_esc(s.get("trajectory_caption", "Путь текста")), st_sec))

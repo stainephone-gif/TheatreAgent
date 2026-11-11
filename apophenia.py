@@ -348,7 +348,12 @@ def main(argv=None) -> None:
         svc.run_forever()
     elif a.command == "once":
         svc.queue.start()
-        rec = svc.run_cycle(do_print=not a.no_print)
+        try:
+            rec = svc.run_cycle(do_print=not a.no_print)
+        except LLMError as e:                          # сбой связи или оплаты посреди цикла: лист не печатается
+            log.error("Цикл прерван, лист не напечатан: %s", e)
+            svc.progress(phase="idle")
+            sys.exit(1)
         if rec:
             print(f"Готово: {cfg['paths']['archive']}/cycle_{rec['cycle']:05d}.pdf")
         time.sleep(3)

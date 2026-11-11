@@ -114,7 +114,7 @@ class Engine:
         record["ghosts"]["moderation"] = qcheck
         if not qcheck["ok"]:
             raise CycleRejected("moderation:ghosts", {"moderation": qcheck, "quotes": [q["span"] for q in quotes]})
-        quotes_block = format_quotes(quotes)
+        quotes_block = format_quotes(quotes, group=bool(self.cfg.get("ghosts", {}).get("group_by_source", False)))
         progress(phase="writing", cycle=cycle_no, quotes=quotes, iterations=[])
 
         # 2. Самоэкспликация
