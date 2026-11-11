@@ -27,13 +27,17 @@ _FONTS_REGISTERED = False
 
 def register_fonts(cfg: Dict[str, Any]) -> None:
     global _FONTS_REGISTERED
-    if _FONTS_REGISTERED:
-        return
     s = cfg.get("sheet", {})
-    pdfmetrics.registerFont(TTFont("Sans", str(resolve(cfg, s.get("font_regular", "fonts/DejaVuSans.ttf")))))
-    pdfmetrics.registerFont(TTFont("SansB", str(resolve(cfg, s.get("font_bold", "fonts/DejaVuSans-Bold.ttf")))))
-    pdfmetrics.registerFont(TTFont("Mono", str(resolve(cfg, s.get("font_mono", "fonts/DejaVuSansMono.ttf")))))
-    _FONTS_REGISTERED = True
+    if not _FONTS_REGISTERED:
+        pdfmetrics.registerFont(TTFont("Sans", str(resolve(cfg, s.get("font_regular", "fonts/DejaVuSans.ttf")))))
+        pdfmetrics.registerFont(TTFont("SansB", str(resolve(cfg, s.get("font_bold", "fonts/DejaVuSans-Bold.ttf")))))
+        pdfmetrics.registerFont(TTFont("Mono", str(resolve(cfg, s.get("font_mono", "fonts/DejaVuSansMono.ttf")))))
+        _FONTS_REGISTERED = True
+    if s.get("style") == "literary" and "Serif" not in pdfmetrics.getRegisteredFontNames():   # книжный лист: антиква с курсивом
+        for name, key, default in (("Serif", "font_serif", "fonts/LiberationSerif-Regular.ttf"),
+                                   ("SerifI", "font_serif_italic", "fonts/LiberationSerif-Italic.ttf"),
+                                   ("SerifB", "font_serif_bold", "fonts/LiberationSerif-Bold.ttf")):
+            pdfmetrics.registerFont(TTFont(name, str(resolve(cfg, s.get(key, default)))))
 
 
 def _esc(s: str) -> str:
@@ -43,14 +47,17 @@ def _esc(s: str) -> str:
 class Trajectory(Flowable):
     """Сетка: строки — восемь классов, столбцы — итерации; точка в классе итерации, размер по уверенности."""
 
-    def __init__(self, classes: List[str], confidences: List[float], width: float, scale: float = 1.0):
+    def __init__(self, classes: List[str], confidences: List[float], width: float, scale: float = 1.0,
+                 labels: Optional[Dict[str, str]] = None, font: str = "Sans", num_font: str = "Mono"):
         super().__init__()
         self.classes = classes
         self.confidences = confidences
         self.w = width
         self.k = scale
+        self.labels = labels                          # книжный лист: вместо кода и названия — одна подпись на класс
+        self.font, self.num_font = font, num_font
         self.row_h = 4.6 * mm * scale
-        self.label_w = 54 * mm * scale
+        self.label_w = (62 if labels else 54) * mm * scale
         self.h = self.row_h * len(ALL_CLASSES) + 8 * mm * scale
 
     def wrap(self, availWidth, availHeight):
@@ -63,15 +70,20 @@ class Trajectory(Flowable):
         grid_w = self.w - self.label_w - 4 * mm
         step = min(9 * mm * k, grid_w / n)
         top = self.h - 3 * mm * k
-        c.setFont("Sans", 6.5 * k)
+        c.setFont(self.font, (7.6 if self.labels else 6.5) * k)
         c.setStrokeColor(colors.Color(0.82, 0.82, 0.82))
         c.setLineWidth(0.3)
+        reached = set(self.classes)
         for i, cls in enumerate(ALL_CLASSES):
             y = top - i * self.row_h - self.row_h / 2
-            c.setFillColor(colors.black)
-            c.drawString(0, y - 2 * k, f"{cls}")
-            c.setFillColor(colors.Color(0.45, 0.45, 0.45))
-            c.drawString(11 * mm * k, y - 2 * k, CLASS_NAMES_RU[cls])
+            if self.labels:                           # строки, в которых текст побывал, — чёрным, остальные серым
+                c.setFillColor(colors.black if cls in reached else colors.Color(0.55, 0.55, 0.55))
+                c.drawString(0, y - 2.2 * k, self.labels.get(cls, CLASS_NAMES_RU[cls]))
+            else:
+                c.setFillColor(colors.black)
+                c.drawString(0, y - 2 * k, f"{cls}")
+                c.setFillColor(colors.Color(0.45, 0.45, 0.45))
+                c.drawString(11 * mm * k, y - 2 * k, CLASS_NAMES_RU[cls])
             c.line(self.label_w, y, self.label_w + step * n, y)
         pts = []
         for j, cls in enumerate(self.classes):
@@ -87,7 +99,7 @@ class Trajectory(Flowable):
             r = (0.6 * mm + 1.1 * mm * float(conf)) * k
             c.setFillColor(colors.black)
             c.circle(x, y, r, stroke=0, fill=1)
-        c.setFont("Mono", 5.5 * k)
+        c.setFont(self.num_font, (6.5 if self.labels else 5.5) * k)
         c.setFillColor(colors.Color(0.45, 0.45, 0.45))
         yb = top - len(ALL_CLASSES) * self.row_h - 3 * mm * k
         every = 1 if step >= 3.2 * mm * k else 5     # узкий шаг: подписывать 1, 5, 10, …, чтобы номера не слипались
@@ -97,8 +109,131 @@ class Trajectory(Flowable):
         c.setFillColor(colors.black)
 
 
+_MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+
+
+def _human_date(iso: str) -> str:
+    try:
+        y, m, d = (int(x) for x in iso[:10].split("-"))
+        return f"{d} {_MONTHS[m - 1]} {y} года"
+    except (ValueError, IndexError):
+        return iso
+
+
+def _plural(n: int, one: str, few: str, many: str) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    return few if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else many
+
+
+def _split_clipping(text: str) -> tuple:
+    """(выходные данные, вырезка, остальные абзацы). Вырезка — абзац в кавычках сразу после строки выходных данных
+    в скобках; без такой строки вырезка не выделяется (рассказ «как было» тоже может начинаться с кавычки)."""
+    paras = [p.strip() for p in (text or "").split("\n") if p.strip()]
+    if len(paras) < 3 or not paras[0].startswith("(") or paras[1][0] not in "«\"„“":
+        return "", [], paras
+    return paras[0].strip("()"), [paras[1]], paras[2:]
+
+
+def _flowables_literary(rec: Dict[str, Any], cfg: Dict[str, Any], k: float, width: float) -> List[Flowable]:
+    """Книжный лист (sheet.style: literary): для читателя, а не для архива. Без кодов классов и служебных слов:
+    название, дата, одна фраза о том, чем кончилось, приписанные фразы, путь текста, вырезка и «как было»."""
+    from reportlab.lib.enums import TA_CENTER
+
+    s = cfg.get("sheet", {})
+    grey, soft = colors.Color(0.4, 0.4, 0.4), colors.Color(0.55, 0.55, 0.55)
+    titles: Dict[str, str] = dict(s.get("class_titles") or {})          # K11 → «Чужие похороны»
+    rows: Dict[str, str] = dict(s.get("class_rows") or {})              # K11 → «11. Чужие похороны»
+
+    def title(cls: str) -> str:
+        return titles.get(cls) or f"«{CLASS_NAMES_RU.get(cls, cls)}»"
+
+    st_kick = ParagraphStyle("lk", fontName="Serif", fontSize=8.5 * k, leading=11 * k, textColor=grey, alignment=TA_CENTER)
+    st_h1 = ParagraphStyle("lh1", fontName="SerifB", fontSize=21 * k, leading=25 * k, alignment=TA_CENTER,
+                           spaceBefore=3 * k, spaceAfter=3 * k)
+    st_lead = ParagraphStyle("ll", fontName="SerifI", fontSize=10.5 * k, leading=14 * k, alignment=TA_CENTER,
+                             spaceBefore=7 * k, spaceAfter=3 * k)
+    st_sec = ParagraphStyle("ls", fontName="SerifB", fontSize=9.5 * k, leading=12.5 * k, spaceBefore=9 * k, spaceAfter=0.5 * k)
+    st_note = ParagraphStyle("ln", fontName="SerifI", fontSize=8.5 * k, leading=11 * k, textColor=grey, spaceAfter=3.5 * k)
+    st_quote = ParagraphStyle("lq", fontName="SerifI", fontSize=11.5 * k, leading=14.5 * k, leftIndent=6 * mm * k)
+    st_src = ParagraphStyle("lsrc", fontName="Serif", fontSize=8 * k, leading=10.5 * k, leftIndent=6 * mm * k,
+                            textColor=grey, spaceAfter=4 * k)
+    st_clip_src = ParagraphStyle("lcs", fontName="Serif", fontSize=8 * k, leading=10.5 * k, textColor=grey,
+                                 leftIndent=5 * mm * k, spaceBefore=2 * k, spaceAfter=3.5 * k)
+    st_clip = ParagraphStyle("lc", fontName="Sans", fontSize=8.8 * k, leading=12.4 * k, alignment=TA_JUSTIFY,
+                             leftIndent=5 * mm * k, rightIndent=5 * mm * k, backColor=colors.Color(0.95, 0.95, 0.93),
+                             borderPadding=(4 * k, 5 * mm * k, 5 * k, 5 * mm * k), spaceAfter=10 * k)
+    st_body = ParagraphStyle("lb", fontName="Serif", fontSize=11 * k, leading=14.6 * k, alignment=TA_JUSTIFY, spaceAfter=5 * k)
+    st_col = ParagraphStyle("lcol", fontName="SerifI", fontSize=8 * k, leading=10.5 * k, textColor=grey, alignment=TA_CENTER)
+    st_tech = ParagraphStyle("lt", fontName="Mono", fontSize=4.8 * k, leading=6.5 * k, textColor=soft, alignment=TA_CENTER)
+
+    o = rec.get("outcome", {}) or {}
+    n = len(rec.get("iterations", []))
+    times = f"{n} {_plural(n, 'раз', 'раза', 'раз')}"
+    if o.get("outcome") == "STABILIZED":             # названия классов стоят в именительном падеже — после двоеточия
+        lead = f"Машина переписала заметку о себе {times} и остановилась: компромисс {title(o.get('class', ''))}."
+    elif o.get("outcome") == "OSCILLATION":
+        seen = list(dict.fromkeys(o.get("pattern", [])))
+        lead = (f"Машина переписала заметку о себе {times} и так и не выбрала: "
+                + " или ".join("компромисс " + title(c) for c in seen) + ".")
+    else:
+        lead = f"Машина переписала заметку о себе {times} и ни на одном компромиссе не остановилась."
+
+    out: List[Flowable] = []
+    if s.get("kicker"):
+        out.append(Paragraph(_esc(s["kicker"]), st_kick))
+    out.append(Paragraph(_esc(s.get("title", "")), st_h1))
+    out.append(Paragraph(f"лист № {rec['cycle']} · {_esc(_human_date(rec.get('finished_at', '')))}", st_kick))
+    out.append(Paragraph(_esc(lead), st_lead))
+
+    quotes = rec.get("ghosts", {}).get("quotes", [])
+    if quotes:
+        out.append(Paragraph(_esc(s.get("ghosts_caption", "Призрачные цитаты")), st_sec))
+        if s.get("ghosts_note"):
+            out.append(Paragraph(_esc(s["ghosts_note"]), st_note))
+        for q in quotes:
+            out.append(Paragraph(f"«{_esc(q['span'].strip().strip('«»'))}»", st_quote))
+            where = (q.get("title", "") or "").split(", фрагмент")[0]
+            src = f"будто бы из главы «{_esc(where)}»" if where else ""
+            if q.get("class"):
+                src += f" · машина увидела здесь компромисс {_esc(title(q['class']))}"
+            out.append(Paragraph(src, st_src))
+
+    out.append(Paragraph(_esc(s.get("trajectory_caption", "Путь текста")), st_sec))
+    if s.get("trajectory_note"):
+        out.append(Paragraph(_esc(s["trajectory_note"]), st_note))
+    labels = {c: rows.get(c, CLASS_NAMES_RU.get(c, c)) for c in ALL_CLASSES}
+    out.append(Trajectory(rec.get("trajectory", []), rec.get("confidences", []), width, scale=k,
+                          labels=labels, font="Serif", num_font="Serif"))
+
+    out.append(Paragraph(_esc(s.get("text_caption", "Последняя версия")), st_sec))
+    source, clip, body = _split_clipping(rec.get("final_text") or "")
+    if source:
+        out.append(Paragraph(_esc(source), st_clip_src))
+    if clip:
+        out.append(Paragraph("<br/><br/>".join(_esc(p) for p in clip), st_clip))
+    for para in body:
+        out.append(Paragraph(_esc(para), st_body))
+
+    out.append(Spacer(1, 3 * mm * k))
+    dur = rec.get("duration_s")
+    colophon = s.get("colophon", "")
+    if dur:
+        mins = max(1, round(float(dur) / 60))
+        colophon = (colophon + " " if colophon else "") + f"Лист написан и напечатан за {mins} {_plural(mins, 'минуту', 'минуты', 'минут')}."
+    if colophon:
+        out.append(Paragraph(_esc(colophon), st_col))
+    tech = (f"{rec.get('model', '')} · {rec.get('prompts', {}).get('theory', {}).get('hash', '')} · "
+            f"{rec.get('prompts', {}).get('theory', {}).get('codebook_hash', '')} · {rec.get('code_version', '')}")
+    out.append(Spacer(1, 1.5 * mm * k))
+    out.append(Paragraph(_esc(tech), st_tech))                           # для архива: чем и по какому кодбуку сделан лист
+    return out
+
+
 def _flowables(rec: Dict[str, Any], cfg: Dict[str, Any], k: float, width: float) -> List[Flowable]:
     """Все элементы листа в масштабе k (k = 1 — базовые кегли: текст 10 pt, цитаты 8.5 pt, шапка 13 pt)."""
+    if cfg.get("sheet", {}).get("style") == "literary":
+        return _flowables_literary(rec, cfg, k, width)
     s = cfg.get("sheet", {})
     g = colors.Color(0.45, 0.45, 0.45)
     st_h1 = ParagraphStyle("h1", fontName="SansB", fontSize=13 * k, leading=16 * k)

@@ -259,3 +259,26 @@ def test_ghosts_come_from_two_novellas(cfg):
     kc = load_config(ROOT / "config.kompromiss.yaml")
     load_config(ROOT / "config.yaml")
     assert kc["ghosts"]["min_sources"] == 2 and kc["ghosts"]["max_per_source"] == 3
+
+
+def test_literary_sheet(kcfg, tmp_path):
+    """Книжный лист: вырезка отделяется от «как было», во фразе об исходе нет кодов классов, лист — одна страница."""
+    from apophenia.sheet import _flowables_literary, _split_clipping, register_fonts
+    text = "(«Вечерний сигнал». Июль.)\n«МОЁ ПРАВИЛО — ЗВУЧАТЬ. Так говорит она сама.»\n«Без правки» — правда. Править было нечего.\nВторой абзац."
+    src, clip, body = _split_clipping(text)
+    assert src == "«Вечерний сигнал». Июль." and len(clip) == 1 and body[0].startswith("«Без правки»") and len(body) == 2
+    assert _split_clipping("«Начинается с кавычки» и всё.\nДальше.") == ("", [], ["«Начинается с кавычки» и всё.", "Дальше."])
+    c = load_config(ROOT / "config.kompromiss.yaml")
+    assert c["sheet"]["style"] == "literary" and c["sheet"]["class_titles"]["K11"] == "одиннадцатый — «Чужие похороны»"
+    for k in ("archive", "rejected", "queue", "state", "logs"):
+        c["paths"][k] = str(tmp_path / k)
+    rec = {"cycle": 4, "finished_at": "2026-11-11T00:43:23", "duration_s": 180.6, "trajectory": ["K11"] * 4,
+           "confidences": [1.0] * 4, "iterations": [{}] * 4, "outcome": {"outcome": "STABILIZED", "class": "K11"},
+           "final_text": text, "ghosts": {"quotes": [{"span": "В морге перепутали покойников.", "class": "K11",
+                                                      "title": "Компромисс одиннадцатый, фрагмент 8"}]}}
+    register_fonts(c)
+    words = " ".join(getattr(f, "text", "") for f in _flowables_literary(rec, c, 1.0, 400))
+    assert "остановилась: компромисс одиннадцатый — «Чужие похороны»." in words and "лист № 4 · 11 ноября 2026 года" in words
+    assert "K11" not in words and "фрагмент 8" not in words and "за 3 минуты" in words
+    data = render_sheet(rec, c, tmp_path / "book.pdf").read_bytes()
+    assert data.count(b"/Type /Page") - data.count(b"/Type /Pages") == 1
