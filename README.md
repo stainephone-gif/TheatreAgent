@@ -211,6 +211,11 @@ python apophenia.py once --mock --scenario drift --config config.kompromiss.samp
 цикл проверяется конфигурацией `config.kompromiss.memory.yaml`: все роли на Claude, новеллу он цитирует по памяти
 (`prompts/ghosts_kompromiss_memory_v1.md`). Расход токенов Claude пишется в запись цикла (`usage`).
 
+Лист «Компромисса» печатается в книжном виде (`sheet.style: literary`): антиква, без кодов классов и служебных
+слов — название, одна фраза об исходе, приписанные фразы, путь текста по двенадцати компромиссам, вырезка на
+подложке и «как было». Подписи классов — `sheet.class_titles` и `sheet.class_rows`. Старые листы пересобираются
+из записи цикла: `python apophenia.py render 4 --config …`. Протокол остаётся техническим.
+
 Через OpenRouter (`llm.provider: openrouter`, ключ `OPENROUTER_API_KEY` в `.env`) цикл идёт одним ключом:
 `config.kompromiss.openrouter.yaml` — письмо, переписывание и классификация на Claude, чтение призраков на Llama 8B
 (`llm.openrouter.models.ghosts`). Имена моделей — как в каталоге OpenRouter: `python apophenia.py models --config
